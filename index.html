@@ -1,0 +1,2876 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>نقشه خاطرات شهری تهران | انقلاب تا نوفل‌لوشاتو، ولیعصر تا فردوسی</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Vazirmatn -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Leaflet JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <style>
+        :root {
+            --pin-red: #e53935;
+            --pin-red-dark: #b71c1c;
+            --pin-navy: #0b1b45;
+            --pin-navy-hover: #162f70;
+            --pin-special: #b45309;
+            --pin-special-light: #f59e0b;
+            --ink-black: #111111;
+            --paper-white: #ffffff;
+        }
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Vazirmatn', system-ui, -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #ffffff;
+            color: var(--ink-black);
+        }
+
+        /* Viewport wrapper that clips the rotated top-down map cleanly */
+        #map-viewport {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+
+        /* Oversized map container so top-down rotation (-5.5 deg) never shows empty corners */
+        #map {
+            position: absolute;
+            top: -18%;
+            left: -18%;
+            width: 136%;
+            height: 136%;
+            background-color: #ffffff;
+            z-index: 1;
+            transform-origin: 50% 50%;
+            transform: rotateZ(-5.5deg) scale(1.0);
+        }
+
+        /* Counter-rotate pins and popups so they always stand upright and crisp */
+        .upright-counter-rotate {
+            transform: rotateZ(5.5deg);
+            transform-origin: bottom center;
+        }
+
+        /* Ultra-light monochrome fallback tiles until vector CAD lines load */
+        .leaflet-tile-pane {
+            filter: grayscale(100%) contrast(155%) brightness(112%);
+            transition: opacity 0.35s ease;
+        }
+
+        /* Crisp AutoCAD-style vector linework rendering */
+        .leaflet-overlay-pane svg path,
+        .leaflet-cadBuildingsPane-pane svg path,
+        .leaflet-cadFootwaysPane-pane svg path,
+        .leaflet-cadRoadCasingPane-pane svg path,
+        .leaflet-cadRoadFillPane-pane svg path {
+            shape-rendering: geometricPrecision;
+        }
+
+        /* Cursor style when in "Add Pin" mode */
+        .adding-pin-cursor #map,
+        .adding-pin-cursor .leaflet-container {
+            cursor: crosshair !important;
+        }
+
+        /* Remove default Leaflet popup styling for custom sketch diagram */
+        .diagram-popup .leaflet-popup-content-wrapper {
+            background: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
+        }
+        .diagram-popup .leaflet-popup-content {
+            margin: 0 !important;
+            line-height: 1.4;
+        }
+        .diagram-popup .leaflet-popup-tip-container {
+            display: none !important;
+        }
+        .diagram-popup.leaflet-popup {
+            margin-bottom: 0 !important;
+            pointer-events: auto;
+        }
+
+        /* Custom Pin Marker Containers */
+        .custom-sketch-pin {
+            background: transparent;
+            border: none;
+        }
+
+        /* Red Memory Pin Styling */
+        .pin-svg-wrapper {
+            position: relative;
+            width: 36px;
+            height: 46px;
+            transform-origin: 18px 44px;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0px 4px 4px rgba(0, 0, 0, 0.35));
+        }
+
+        .pin-svg-wrapper:hover {
+            transform: scale(1.16) translateY(-2px);
+        }
+
+        .pin-svg-wrapper.active-pin {
+            transform: scale(1.18);
+            filter: drop-shadow(0px 5px 8px rgba(229, 57, 53, 0.55));
+        }
+
+        /* Mini count badge on red memory pin */
+        .pin-count-badge {
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            background: #ffffff;
+            color: #111111;
+            border: 1.8px solid #111111;
+            font-size: 10px;
+            font-weight: 800;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            box-shadow: 1px 1px 0 #111111;
+        }
+
+        /* Navy Screen Pin Styling */
+        .screen-pin-wrapper {
+            position: relative;
+            width: 28px;
+            height: 36px;
+            transform-origin: 14px 34px;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+            filter: drop-shadow(0px 3px 3px rgba(11, 27, 69, 0.35));
+        }
+
+        .screen-pin-wrapper:hover {
+            transform: scale(1.18) translateY(-2px);
+            filter: drop-shadow(0px 5px 6px rgba(11, 27, 69, 0.55));
+        }
+
+        .screen-pin-wrapper.active-screen-pin {
+            transform: scale(1.22);
+            filter: drop-shadow(0px 5px 9px rgba(11, 27, 69, 0.7));
+        }
+
+        /* Special Memory Pin Styling (Gold/Amber Star Pin for "خاطرات خاص" Layer) */
+        .special-pin-wrapper {
+            position: relative;
+            width: 40px;
+            height: 50px;
+            transform-origin: 20px 48px;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+            filter: drop-shadow(0px 4px 6px rgba(180, 83, 9, 0.45));
+        }
+
+        .special-pin-wrapper:hover {
+            transform: scale(1.16) translateY(-2px);
+            filter: drop-shadow(0px 6px 10px rgba(180, 83, 9, 0.65));
+        }
+
+        .special-pin-wrapper.active-pin {
+            transform: scale(1.2);
+            filter: drop-shadow(0px 6px 12px rgba(180, 83, 9, 0.75));
+        }
+
+        .special-pin-ring {
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            width: 26px;
+            height: 26px;
+            margin-left: -13px;
+            border: 2px solid var(--pin-special-light);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: screenPulse 2.2s ease-out infinite;
+        }
+
+        /* Count badge on Screen pin showing linked memory pins */
+        .screen-count-badge {
+            position: absolute;
+            top: -5px;
+            left: -6px;
+            background: #ffffff;
+            color: var(--pin-navy);
+            border: 1.8px solid var(--pin-navy);
+            font-size: 9.5px;
+            font-weight: 800;
+            min-width: 17px;
+            height: 17px;
+            padding: 0 3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            box-shadow: 1px 1px 0 var(--pin-navy);
+        }
+
+        .screen-pin-wrapper.active-screen-pin .screen-count-badge {
+            background: var(--pin-red);
+            color: #ffffff;
+            border-color: #111111;
+            box-shadow: 1px 1px 0 #111111;
+        }
+
+        /* Subtle pulse ring around currently active Screen */
+        .screen-active-ring {
+            position: absolute;
+            bottom: -4px;
+            left: 50%;
+            width: 24px;
+            height: 24px;
+            margin-left: -12px;
+            border: 2px solid var(--pin-navy);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: screenPulse 1.7s ease-out infinite;
+        }
+
+        @keyframes screenPulse {
+            0% { transform: scale(0.5); opacity: 0.9; }
+            100% { transform: scale(1.9); opacity: 0; }
+        }
+
+        /* Pop-in animation when red memory pins appear under a Screen */
+        @keyframes pinPopIn {
+            0% { transform: scale(0.3) translateY(8px); opacity: 0; }
+            75% { transform: scale(1.12) translateY(-2px); opacity: 1; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        .pin-pop-in {
+            animation: pinPopIn 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        }
+
+        /* Minimalist architectural toggle switch for Layers panel */
+        .layer-switch {
+            position: relative;
+            width: 34px;
+            height: 18px;
+            border: 1.8px solid #111111;
+            background-color: #e5e5e5;
+            flex-shrink: 0;
+            transition: background-color 0.18s ease;
+        }
+
+        .layer-switch::after {
+            content: '';
+            position: absolute;
+            top: 1.5px;
+            left: 2px;
+            width: 11px;
+            height: 11px;
+            background-color: #111111;
+            transition: transform 0.18s ease, background-color 0.18s ease;
+        }
+
+        .layer-switch.is-on::after {
+            transform: translateX(15px);
+            background-color: #ffffff;
+        }
+
+        .layer-switch.is-on.switch-navy {
+            background-color: var(--pin-navy);
+        }
+
+        .layer-switch.is-on.switch-red {
+            background-color: var(--pin-red);
+        }
+
+        .layer-switch.is-on.switch-special {
+            background-color: var(--pin-special);
+        }
+
+        /* ============================================================================
+           DIAGRAMMATIC CALLOUT POPUP (Exact match to hand-drawn sketch - Enlarged)
+           Pin tip at bottom-left -> Diagonal line (/) -> Top Box -> Stacked Black Boxes
+           ============================================================================ */
+        .diagram-popup-anchor {
+            transform: translateY(calc(100% - 54px)) rotateZ(5.5deg);
+            transform-origin: 0px 52px;
+        }
+
+        .sketch-diagram-container {
+            position: relative;
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            direction: ltr;
+            pointer-events: auto;
+            user-select: text;
+        }
+
+        .sketch-connector-svg {
+            width: 54px;
+            height: 64px;
+            flex-shrink: 0;
+            overflow: visible;
+            pointer-events: none;
+            margin-right: -2px;
+        }
+
+        .sketch-boxes-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 410px;
+            max-width: 82vw;
+            max-height: min(64vh, calc(100vh - 175px));
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            padding: 2px 2px 8px 6px;
+            direction: rtl;
+        }
+
+        .sketch-boxes-stack::-webkit-scrollbar {
+            width: 6px;
+        }
+        .sketch-boxes-stack::-webkit-scrollbar-track {
+            background: rgba(17, 17, 17, 0.08);
+            border-radius: 3px;
+        }
+        .sketch-boxes-stack::-webkit-scrollbar-thumb {
+            background: #111111;
+            border-radius: 3px;
+        }
+
+        .sketch-box-red {
+            background: #ffffff;
+            border: 2.8px solid var(--pin-red);
+            border-radius: 2px 4px 3px 2px;
+            padding: 15px 17px;
+            box-shadow: 5px 5px 0px rgba(229, 57, 53, 0.18);
+            position: relative;
+            flex-shrink: 0;
+            transition: transform 0.15s ease;
+        }
+
+        .sketch-box-special {
+            background: #fffdf7;
+            border: 2.8px solid var(--pin-special);
+            border-radius: 2px 4px 3px 2px;
+            padding: 15px 17px;
+            box-shadow: 5px 5px 0px rgba(180, 83, 9, 0.22);
+            position: relative;
+            flex-shrink: 0;
+            transition: transform 0.15s ease;
+        }
+
+        .sketch-box-black {
+            background: #ffffff;
+            border: 2px solid var(--ink-black);
+            border-radius: 2px 3px 4px 2px;
+            padding: 13px 16px;
+            box-shadow: 4px 4px 0px rgba(17, 17, 17, 0.14);
+            position: relative;
+            flex-shrink: 0;
+            transition: transform 0.15s ease;
+        }
+
+        .sketch-wavy-divider {
+            height: 7px;
+            width: 100%;
+            margin-top: 8px;
+            opacity: 0.35;
+        }
+
+        .sketch-secondary-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Architectural brutalist buttons & panels */
+        .arch-panel {
+            background: #ffffff;
+            border: 2px solid #111111;
+            box-shadow: 4px 4px 0px #111111;
+        }
+
+        .arch-btn {
+            background: #ffffff;
+            color: #111111;
+            border: 2px solid #111111;
+            box-shadow: 2px 2px 0px #111111;
+            transition: all 0.12s ease;
+        }
+        .arch-btn:hover {
+            transform: translate(-1px, -1px);
+            box-shadow: 3px 3px 0px #111111;
+        }
+        .arch-btn:active {
+            transform: translate(1px, 1px);
+            box-shadow: 1px 1px 0px #111111;
+        }
+
+        .arch-btn-red {
+            background: var(--pin-red);
+            color: #ffffff;
+            border: 2px solid #111111;
+            box-shadow: 3px 3px 0px #111111;
+            transition: all 0.12s ease;
+        }
+        .arch-btn-red:hover {
+            background: #d32f2f;
+            transform: translate(-1px, -1px);
+            box-shadow: 4px 4px 0px #111111;
+        }
+        .arch-btn-red.active-mode {
+            background: #111111;
+            color: #ffffff;
+            border-color: var(--pin-red);
+            box-shadow: 3px 3px 0px var(--pin-red);
+        }
+
+        @keyframes pulseRed {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+        .pulse-badge {
+            animation: pulseRed 1.8s infinite;
+        }
+    </style>
+</head>
+<body class="select-none">
+
+    <!-- =====================================================================
+         TOP ARCHITECTURAL HEADER BAR (Minimalist Black, White, Navy & Red)
+         ===================================================================== -->
+    <header class="fixed top-3 right-3 left-3 z-[1000] pointer-events-none flex flex-col md:flex-row items-start md:items-center justify-between gap-2">
+        
+        <!-- Brand & Bounded Zone Info -->
+        <div class="arch-panel px-3.5 py-2.5 pointer-events-auto flex items-center gap-3 max-w-full">
+            <div class="w-8 h-9 flex-shrink-0 flex items-center justify-center bg-red-50 border border-black">
+                <svg width="22" height="28" viewBox="0 0 36 46" fill="none">
+                    <path d="M18 44 C18 44 31 26.5 31 16 C31 8.5 25.2 3 18 3 C10.8 3 5 8.5 5 16 C5 26.5 18 44 18 44 Z" 
+                          fill="#e53935" stroke="#111111" stroke-width="2.5" stroke-linejoin="round"/>
+                    <circle cx="18" cy="15.5" r="4.5" fill="#ffffff" stroke="#111111" stroke-width="2"/>
+                </svg>
+            </div>
+            <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <h1 class="text-sm md:text-base font-extrabold tracking-tight text-black">
+                        نقشه خاطرات شهری تهران
+                    </h1>
+                    <span class="text-[10px] font-bold bg-black text-white px-1.5 py-0.5">
+                        پروژه حافظه جمعی
+                    </span>
+                </div>
+                <p class="text-[11px] text-neutral-700 font-medium mt-0.5">
+                    محدوده غرب ولیعصر تا میدان فردوسی | از خیابان انقلاب تا نوفل‌لوشاتو
+                </p>
+            </div>
+        </div>
+
+        <!-- Action Controls & Layers Dropdown -->
+        <div class="flex flex-wrap items-center gap-2 pointer-events-auto">
+            
+            <!-- Add New Memory Pin Mode Toggle -->
+            <button id="toggleAddPinBtn" onclick="toggleAddPinMode()" 
+                class="arch-btn-red px-3.5 py-2 text-xs md:text-sm font-bold flex items-center gap-2 cursor-pointer">
+                <span id="addPinBtnDot" class="w-2.5 h-2.5 rounded-full bg-white inline-block"></span>
+                <span id="addPinBtnText">+ گذاشتن پین و ثبت خاطره</span>
+            </button>
+
+            <!-- Layers Dropdown Wrapper -->
+            <div id="layersControlWrapper" class="relative">
+                <button type="button" onclick="toggleLayersPanel(event)" 
+                    class="arch-btn px-3 py-2 text-xs md:text-sm font-extrabold flex items-center gap-2 cursor-pointer">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                    <span>Layers</span>
+                    <span id="activeLayersCountBadge" class="text-[10px] bg-black text-white px-1.5 py-0.5 font-bold">۳</span>
+                </button>
+
+                <!-- Layers Dropdown Panel -->
+                <div id="layersPanel" class="hidden absolute left-0 md:left-auto md:right-0 mt-2 w-72 arch-panel p-2.5 z-[1200]">
+                    <div class="flex items-center justify-between pb-2 mb-2 border-b border-neutral-200">
+                        <span class="text-xs font-extrabold text-black">لایه‌های نقشه (Layers)</span>
+                        <button type="button" onclick="toggleLayersPanel(event, false)" class="text-xs text-neutral-400 hover:text-black font-extrabold px-1 cursor-pointer">✕</button>
+                    </div>
+
+                    <div class="space-y-2">
+                        <!-- Layer 1: Screens (33 Dark Navy Pins) -->
+                        <button type="button" onclick="toggleLayer('screens')" 
+                                class="w-full flex items-center justify-between gap-2 p-2 border border-neutral-300 hover:border-black bg-white transition-colors cursor-pointer text-right">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-3.5 h-3.5 rounded-full flex-shrink-0 border-2 border-black" style="background-color: #0b1b45;"></span>
+                                <div class="truncate">
+                                    <div class="text-xs font-extrabold text-black leading-tight">Screens</div>
+                                    <div class="text-[10px] text-neutral-500 font-medium mt-0.5">
+                                        <span id="layerScreensCount">۳۳</span> نقطه اسکرین (پین سرمه‌ای)
+                                    </div>
+                                </div>
+                            </div>
+                            <span id="layerSwitch-screens" class="layer-switch is-on switch-navy"></span>
+                        </button>
+
+                        <!-- Layer 2: Special Memories Layer (Hana the Cat & Dried Chenar Tree) -->
+                        <button type="button" onclick="toggleLayer('specialMemories')" 
+                                class="w-full flex items-center justify-between gap-2 p-2 border border-amber-700/50 hover:border-black bg-amber-50/40 transition-colors cursor-pointer text-right">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-3.5 h-3.5 rounded-full flex-shrink-0 border-2 border-black flex items-center justify-center text-[8px] text-white" style="background-color: #b45309;">★</span>
+                                <div class="truncate">
+                                    <div class="text-xs font-extrabold text-black leading-tight">خاطرات خاص</div>
+                                    <div class="text-[10px] text-neutral-600 font-medium mt-0.5">
+                                        گربه حنا و درخت چنار خشکیده (<span id="layerSpecialCount">۲</span> نقطه)
+                                    </div>
+                                </div>
+                            </div>
+                            <span id="layerSwitch-specialMemories" class="layer-switch is-on switch-special"></span>
+                        </button>
+
+                        <!-- Layer 3: Study Zone Red Boundary -->
+                        <button type="button" onclick="toggleLayer('boundary')" 
+                                class="w-full flex items-center justify-between gap-2 p-2 border border-neutral-300 hover:border-black bg-white transition-colors cursor-pointer text-right">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-3.5 h-1 flex-shrink-0 bg-red-600"></span>
+                                <div class="truncate">
+                                    <div class="text-xs font-extrabold text-black leading-tight">مرز محدوده</div>
+                                    <div class="text-[10px] text-neutral-500 font-medium mt-0.5">کادر قرمز محدوده مطالعه</div>
+                                </div>
+                            </div>
+                            <span id="layerSwitch-boundary" class="layer-switch is-on switch-red"></span>
+                        </button>
+
+                        <!-- Layer 4: Show All Memories Override (Off by default so memories reveal per Screen) -->
+                        <button type="button" onclick="toggleLayer('allMemories')" 
+                                class="w-full flex items-center justify-between gap-2 p-2 border border-neutral-300 hover:border-black bg-white transition-colors cursor-pointer text-right">
+                            <div class="flex items-center gap-2.5 min-w-0">
+                                <span class="w-3.5 h-3.5 rounded-full flex-shrink-0 border-2 border-black bg-red-600"></span>
+                                <div class="truncate">
+                                    <div class="text-xs font-extrabold text-black leading-tight">نمایش همه خاطرات</div>
+                                    <div class="text-[10px] text-neutral-500 font-medium mt-0.5">در حالت خاموش فقط با کلیک روی اسکرین</div>
+                                </div>
+                            </div>
+                            <span id="layerSwitch-allMemories" class="layer-switch switch-red"></span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Panel -->
+            <div class="arch-panel px-3 py-2 text-xs font-bold flex items-center gap-2.5">
+                <span><strong id="statScreensCount" style="color: #0b1b45;">۰</strong> Screens</span>
+                <span class="text-neutral-300">|</span>
+                <span><strong id="statPinsCount" class="text-red-600">۰</strong> پین خاطره</span>
+                <span class="text-neutral-300 hidden sm:inline">|</span>
+                <span class="hidden sm:inline"><strong id="statMemoriesCount" class="text-black">۰</strong> خاطره</span>
+                <button onclick="resetToDemoMemories()" 
+                    class="text-[11px] text-neutral-500 hover:text-red-600 underline mr-1 cursor-pointer"
+                    title="بازگردانی خاطرات دمو به حالت اولیه">
+                    بازنشانی
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- =====================================================================
+         ACTIVE MODE BANNER (Shown when user is placing a pin)
+         ===================================================================== -->
+    <div id="modeInstructionBanner" 
+         class="fixed top-24 md:top-20 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none transition-all duration-200 opacity-0 -translate-y-2">
+        <div class="bg-black text-white border-2 border-red-500 px-4 py-2 text-xs md:text-sm font-bold shadow-lg flex items-center gap-2.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-500 pulse-badge"></span>
+            <span>هر جای محدوده کلیک کنید؛ خاطره به‌طور خودکار به نزدیک‌ترین Screen متصل می‌شود</span>
+            <button onclick="toggleAddPinMode(false)" class="pointer-events-auto text-red-400 hover:text-white text-xs underline mr-2 cursor-pointer">لغو</button>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         ACTIVE SCREEN STATUS BAR (Shown when a navy Screen pin is selected)
+         ===================================================================== -->
+    <div id="activeScreenBanner"
+         class="hidden fixed top-24 md:top-20 left-1/2 -translate-x-1/2 z-[990] pointer-events-auto">
+        <div class="arch-panel px-3.5 py-2 flex items-center gap-3 text-xs" style="border-color: #0b1b45; box-shadow: 4px 4px 0 #0b1b45;">
+            <span class="w-3 h-3 rounded-full flex-shrink-0 border border-black" style="background-color: #0b1b45;"></span>
+            <div class="flex items-center gap-2 flex-wrap">
+                <span id="activeScreenTitle" class="font-extrabold" style="color: #0b1b45;">Screen #۱</span>
+                <span class="text-neutral-300">|</span>
+                <span id="activeScreenCountText" class="font-bold text-black">۰ پین خاطره زیرمجموعه</span>
+            </div>
+            <button onclick="deselectScreen()"
+                class="text-neutral-500 hover:text-red-600 font-extrabold text-xs px-1.5 py-0.5 border border-neutral-300 hover:border-red-600 cursor-pointer"
+                title="بستن و پنهان کردن خاطرات این اسکرین">
+                بستن ✕
+            </button>
+        </div>
+    </div>
+
+    <!-- =====================================================================
+         MAIN INTERACTIVE MAP CONTAINER (Flat Top-Down View)
+         ===================================================================== -->
+    <div id="map-viewport">
+        <div id="map"></div>
+    </div>
+
+    <!-- =====================================================================
+         TOAST NOTIFICATION
+         ===================================================================== -->
+    <div id="toastBox" class="fixed bottom-16 left-1/2 -translate-x-1/2 z-[2000] pointer-events-none opacity-0 transition-opacity duration-300">
+        <div id="toastText" class="bg-black text-white border-2 border-red-500 px-4 py-2 text-xs font-bold shadow-md"></div>
+    </div>
+
+    <!-- =====================================================================
+         APPLICATION LOGIC
+         ===================================================================== -->
+    <script>
+        /***********************************************************************
+         * 1. GEOGRAPHIC COORDINATES, CAMERA ANGLE & STUDY ZONE DEFINITION
+         ***********************************************************************/
+        const STUDY_BOUNDS_LATLNG = [
+            [35.6945, 51.4018], // Southwest: West of Valiasr & Nofel Loshato
+            [35.7027, 51.4210]  // Northeast: North-East of Ferdowsi Square
+        ];
+
+        const MAX_PAN_BOUNDS_LATLNG = [
+            [35.6855, 51.3940],
+            [35.7080, 51.4290]
+        ];
+
+        // Exact red boundary frame [lat, lng] matching the user's blue rectangle
+        const STUDY_POLYGON_LATLNG = [
+            [35.7017, 51.4028], // NW: North of Enqelab St, west of Valiasr St
+            [35.7024, 51.4198], // NE: North-East of Ferdowsi Square roundabout
+            [35.6947, 51.4207], // SE: Ferdowsi Ave (south edge of British Embassy)
+            [35.6952, 51.4021]  // SW: West of Valiasr St, south side of Nofel Loshato St
+        ];
+
+        const STORAGE_KEY = 'tehran_urban_memory_pins_v7';
+
+        /***********************************************************************
+         * 2. REAL-WORLD SCREEN PINS LAYER (33 Dark Navy Points)
+         ***********************************************************************/
+        const SCREEN_PINS_DATA = [
+            { id: 'screen-1',  index: 1,  lat: 35.7006823, lng: 51.4191065 },
+            { id: 'screen-2',  index: 2,  lat: 35.7001775, lng: 51.4179927 },
+            { id: 'screen-3',  index: 3,  lat: 35.7000702, lng: 51.4177872 },
+            { id: 'screen-4',  index: 4,  lat: 35.6979636, lng: 51.4186150 },
+            { id: 'screen-5',  index: 5,  lat: 35.7006194, lng: 51.4163036 },
+            { id: 'screen-6',  index: 6,  lat: 35.7012407, lng: 51.4151627 },
+            { id: 'screen-7',  index: 7,  lat: 35.7000895, lng: 51.4140405 },
+            { id: 'screen-8',  index: 8,  lat: 35.6967942, lng: 51.4155710 },
+            { id: 'screen-9',  index: 9,  lat: 35.6969480, lng: 51.4149786 },
+            { id: 'screen-10', index: 10, lat: 35.6960704, lng: 51.4150819 },
+            { id: 'screen-11', index: 11, lat: 35.6957739, lng: 51.4141864 },
+            { id: 'screen-12', index: 12, lat: 35.6967084, lng: 51.4130867 },
+            { id: 'screen-13', index: 13, lat: 35.6953924, lng: 51.4125073 },
+            { id: 'screen-14', index: 14, lat: 35.6971190, lng: 51.4112115 },
+            { id: 'screen-15', index: 15, lat: 35.6966716, lng: 51.4112731 },
+            { id: 'screen-16', index: 16, lat: 35.6956062, lng: 51.4101020 },
+            { id: 'screen-17', index: 17, lat: 35.6972963, lng: 51.4095428 },
+            { id: 'screen-18', index: 18, lat: 35.6969586, lng: 51.4075372 },
+            { id: 'screen-19', index: 19, lat: 35.6965472, lng: 51.4074218 },
+            { id: 'screen-20', index: 20, lat: 35.6978898, lng: 51.4081517 },
+            { id: 'screen-21', index: 21, lat: 35.6984570, lng: 51.4073772 },
+            { id: 'screen-22', index: 22, lat: 35.7003686, lng: 51.4101419 },
+            { id: 'screen-23', index: 23, lat: 35.7008075, lng: 51.4090945 },
+            { id: 'screen-24', index: 24, lat: 35.6991486, lng: 51.4090902 },
+            { id: 'screen-25', index: 25, lat: 35.6995766, lng: 51.4078805 },
+            { id: 'screen-26', index: 26, lat: 35.6968538, lng: 51.4061545 },
+            { id: 'screen-27', index: 27, lat: 35.6973284, lng: 51.4069266 },
+            { id: 'screen-28', index: 28, lat: 35.6977330, lng: 51.4070631 },
+            { id: 'screen-29', index: 29, lat: 35.6986007, lng: 51.4071881 },
+            { id: 'screen-30', index: 30, lat: 35.6998399, lng: 51.4055473 },
+            { id: 'screen-31', index: 31, lat: 35.6957314, lng: 51.4037962 },
+            { id: 'screen-32', index: 32, lat: 35.6999667, lng: 51.4042836 },
+            { id: 'screen-33', index: 33, lat: 35.6984553, lng: 51.4022368 }
+        ];
+
+        // Expanded authentic demo memories + 2 dedicated Special Memories (Hana the Cat & Dried Chenar Tree)
+        const DEFAULT_DEMO_PINS = [
+            // --- SPECIAL MEMORIES LAYER (خاطرات خاص) ---
+            {
+                id: 'special-cat-hana',
+                isSpecial: true,
+                specialTag: 'خاطره خاص • حنا',
+                lat: 35.69835,
+                lng: 51.40792,
+                locationTitle: 'ظرف غذای «حنا» (گربه گم‌شده کوچه)',
+                memories: [
+                    {
+                        author: 'الهام، همسایه کوچه',
+                        date: 'پاییز ۱۴۰۳',
+                        text: 'حنا یه گربه نارنجی و سفید آروم بود که سه سال تمام هر شب ساعت هفت، دقیقاً همین‌جا کنار پله‌ها سر ظرف غذاش منتظر می‌نشست. چند هفته‌ای هست که دیگه نمیاد و هیچ خبری ازش نیست... هنوز هر شب ظرف آب و غذاش رو تازه می‌ذارم، به این امید که یه شب دوباره صدای میوی آرومش رو بشنوم.'
+                    },
+                    {
+                        author: 'پویا، دانشجوی تئاتر',
+                        date: 'دو هفته پیش',
+                        text: 'هر وقت از تمرین برمی‌گشتم همین‌جا می‌نشستم و چند دقیقه نازش می‌کردم. انقدر با آدم‌ها مهربون بود که کل کوچه می‌شناختنش. آخرین بار زیر بارون نزدیک پیاده‌رو دیدمش؛ امیدوارم یه جای گرم و امن رفته باشه و حالش خوب باشه.'
+                    },
+                    {
+                        author: 'خانم رضایی، پلاک ۱۴',
+                        date: 'هفته گذشته',
+                        text: 'ظرف پلاستیکی کوچیکش هنوز کنار دیوار مونده و دل هیچ‌کس نمیاد برش داره. انگار بخشی از روح این کوچه با رفتن حنا ساکت شده. اگر کسی نشونی ازش دید، همین‌جا یه خبر بذاره.'
+                    }
+                ]
+            },
+            {
+                id: 'special-chenar-tree',
+                isSpecial: true,
+                specialTag: 'خاطره خاص • درخت چنار',
+                lat: 35.69745,
+                lng: 51.40548,
+                locationTitle: 'درخت چنار کهنسالِ خشکیده',
+                memories: [
+                    {
+                        author: 'مهندس کریمی، ۶۱ ساله',
+                        date: 'خاطره پنجاه ساله',
+                        text: 'این چنار پیر رو از بچگی یادمه؛ تابستون‌های داغ تهران سایه‌ش مثل یه چتر عظیم روی نصف پیاده‌رو می‌افتاد. زیر همین شاخه‌ها با رفیق‌های دبیرستان قرار می‌ذاشتیم، آب‌زرشک می‌خوردیم و ساعت‌ها حرف می‌زدیم. امسال که دیدم بعد از ده‌ها سال بالاخره خشکیده و دیگه برگی نداره، بغض گلوم رو گرفت.'
+                    },
+                    {
+                        author: 'رویا و علی',
+                        date: 'بهار ۱۳۹۶ تا امروز',
+                        text: 'اولین قرارمون زیر همین چنار بود؛ یادمه برگ‌هاش توی باد اردیبهشت صدا می‌داد و نور خورشید تکه‌تکه از لابه‌لاش می‌افتاد روی سنگ‌فرش. هنوزم هر سال سالگردمون میایم کنار تنه خشکش وایمیستیم و ازش تشکر می‌کنیم.'
+                    },
+                    {
+                        author: 'سعید، مغازه‌دار قدیمی',
+                        date: 'زمستان ۱۴۰۲',
+                        text: 'از وقتی جوی آب قدیمی رو بستن و دور ریشه‌ش سیمان ریختن کم‌کم جونش گرفته شد. هزاران آدم توی این سال‌ها زیر سایه این درخت نفس تازه کردن، گریه کردن، خندیدن و منتظر کسی موندن. تنه خشکش هنوز مثل یه مجسمه ایستاده و حافظه همه ما رو نگه داشته.'
+                    }
+                ]
+            },
+
+            // --- REGULAR MEMORIES LAYER (Automatically linked to nearest Screen) ---
+            {
+                id: 'pin-theater-steps',
+                lat: 35.70005,
+                lng: 51.40585,
+                locationTitle: 'پله‌های تئاتر شهر و پارک دانشجو',
+                memories: [
+                    {
+                        author: 'سارا، ۲۹ ساله',
+                        date: 'پاییز ۱۴۰۱',
+                        text: 'پله‌های آجری تئاتر شهر همیشه بوی بارون و بلال می‌ده. ساعت‌ها اینجا کنار حوض منتظر دوستم می‌نشستم تا بلیط تئاتر ساعت شیش رو بگیریم.'
+                    },
+                    {
+                        author: 'امیرحسین، دانشجوی هنر',
+                        date: 'زمستان ۱۳۹۸',
+                        text: 'غروب‌های این گوشه یک موسیقی متن دائمی داره؛ صدای ویولن نوازنده‌های خیابونی که با همهمه عابرها قاطی می‌شه.'
+                    },
+                    {
+                        author: 'دلارام',
+                        date: 'آبان ۱۴۰۳',
+                        text: 'بعد از اجرای پایان‌نامه‌م با لباس نمایش اومدیم بیرون و روی همین پله‌ها تا ساعت نه شب با همکلاسی‌ها خندیدیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-park-bench',
+                lat: 35.69955,
+                lng: 51.40525,
+                locationTitle: 'پیاده‌رو جنوب تئاتر شهر',
+                memories: [
+                    {
+                        author: 'مهسا',
+                        date: 'بهار ۱۴۰۲',
+                        text: 'اولین بار که دستش رو گرفتم دقیقاً همین‌جا کنار خروجی مترو تئاتر شهر بود. هنوزم هر بار رد می‌شم لبخند می‌زنم.'
+                    },
+                    {
+                        author: 'هومن، ۳۴ ساله',
+                        date: 'اسفند ۱۴۰۰',
+                        text: 'شب عید اینجا جای سوزن انداختن نبود؛ از یکی از دست‌فروش‌ها یه شاخه نرگس خریدم و تا خونه تمام راه بوش توی دستم مونده بود.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-valiasr-enqelab-west',
+                lat: 35.70022,
+                lng: 51.40455,
+                locationTitle: 'ضلع غربی چهارراه ولیعصر',
+                memories: [
+                    {
+                        author: 'نیما، عکاس',
+                        date: 'آبان ۱۴۰۲',
+                        text: 'وقتی چراغ قرمز می‌شه و سیل آدم‌ها از زیرگذر میان بیرون، بهترین قاب برای عکاسی از ریتم واقعی تهرانه.'
+                    },
+                    {
+                        author: 'شیما، دانشجوی معماری',
+                        date: 'مهر ۱۴۰۱',
+                        text: 'با ماکت سنگین توی دست و کوله‌پشتی پر از راپید و کاغذ کالک همیشه همین‌جا دنبال تاکسی می‌گشتیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-valiasr-partovi',
+                lat: 35.69665,
+                lng: 51.40585,
+                locationTitle: 'ولیعصر، حوالی پرتوی و هاشمی‌فر',
+                memories: [
+                    {
+                        author: 'حاج محمود، کاسب قدیمی',
+                        date: 'خاطره قدیمی',
+                        text: 'این خونه آجری‌های اطراف ولیعصر روزگاری همه‌شون حیاط داشتن با درخت خرمالو. صبح‌های زود بوی نون بربری تازه کل کوچه رو پر می‌کرد.'
+                    },
+                    {
+                        author: 'نسترن، ۲۶ ساله',
+                        date: 'تابستان ۱۴۰۲',
+                        text: 'یه کتاب‌فروشی کوچیک توی همین راسته بود که پیرمرد صاحبش هر وقت می‌رفتم یه چای تازه‌دم می‌ریخت و کتاب معرفی می‌کرد.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-valiasr-nofel-sw',
+                lat: 35.69562,
+                lng: 51.40418,
+                locationTitle: 'ابتدای نوفل‌لوشاتو از سمت ولیعصر',
+                memories: [
+                    {
+                        author: 'شهاب، ۳۳ ساله',
+                        date: 'تابستان ۱۴۰۰',
+                        text: 'خونه مادربزرگم توی یکی از همین کوچه‌های باریک بود. صدای زنگ در آهنی‌شون و سایه چنارهای پیاده‌رو هنوز توی ذهنمه.'
+                    },
+                    {
+                        author: 'فریبا',
+                        date: 'دی ۱۴۰۲',
+                        text: 'برف سنگینی اومده بود و هیچ ماشینی رد نمی‌شد؛ کل عرض خیابون رو پیاده وسط برف سفید راه رفتیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-razi-shahriar',
+                lat: 35.69815,
+                lng: 51.40845,
+                locationTitle: 'کوچه‌های آرام بین رازی و شهریار',
+                memories: [
+                    {
+                        author: 'کیوان',
+                        date: 'اسفند ۱۳۹۹',
+                        text: 'این کوچه‌ها همیشه پناهگاه ما دانشجوها برای فرار از شلوغی چهارراه ولیعصر بود. عصرهای پاییز برگ‌های زرد تمام پیاده‌رو رو می‌پوشوند.'
+                    },
+                    {
+                        author: 'مریم، ۳۱ ساله',
+                        date: 'پاییز ۱۴۰۲',
+                        text: 'بارون تندی گرفته بود و زیر سایبون یکی از ساختمان‌های قدیمی رازی ایستاده بودیم و به صدای بارون روی آسفالت گوش می‌دادیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-razi-enqelab',
+                lat: 35.70092,
+                lng: 51.40878,
+                locationTitle: 'خیابان انقلاب، نبش رازی',
+                memories: [
+                    {
+                        author: 'آزاده، دانشجوی ادبیات',
+                        date: 'مهر ۱۴۰۰',
+                        text: 'کتاب‌فروشی‌ها و دکه‌های روزنامه‌فروشی این مسیر بوی کاغذ نو و جوهر می‌دادن؛ هر هفته بعد از کلاس یه دور کامل تا کالج پیاده می‌رفتم.'
+                    },
+                    {
+                        author: 'بابک، ۴۵ ساله',
+                        date: 'خرداد ۱۳۸۸',
+                        text: 'نصف کتابخونه خونه‌م رو از همین پنجاه متر پیاده‌رو خریدم؛ کتاب‌های دست‌دومی که حاشیه‌شون پر از یادداشت آدم‌های غریبه بود.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-college-khark',
+                lat: 35.70062,
+                lng: 51.41045,
+                locationTitle: 'حوالی پل کالج و خیابان خارک',
+                memories: [
+                    {
+                        author: 'رضا، عکاس شهری',
+                        date: 'شهریور ۱۴۰۲',
+                        text: 'ایستادن نزدیک پل کالج وقت غروب یه تصویر تکرارنشدنی داره؛ خط صاف خیابون انقلاب تا غرب و نور قرمزی که روی شیشه‌ها می‌افته.'
+                    },
+                    {
+                        author: 'نگار، ۲۴ ساله',
+                        date: 'بهمن ۱۳۹۹',
+                        text: 'هر روز صبح از زیر پل کالج رد می‌شدم تا برسم دانشکده. باد سرد زمستون اینجا همیشه خواب رو از سرم می‌پروند.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-vahdat-vaezi',
+                lat: 35.69738,
+                lng: 51.41145,
+                locationTitle: 'حوالی تالار وحدت و کوچه واعظی',
+                memories: [
+                    {
+                        author: 'فرهاد، ۴۲ ساله',
+                        date: 'دی ۱۳۹۷',
+                        text: 'شب‌هایی که تالار وحدت اجرا داشت، کل این محدوده پر از آدم‌هایی می‌شد که با پالتو و شال‌گردن با ذوق درباره موسیقی حرف می‌زدن.'
+                    },
+                    {
+                        author: 'پریسا، نوازنده ویولنسل',
+                        date: 'بهمن ۱۴۰۱',
+                        text: 'استرس قبل از اولین اجرا روی صحنه رو همین‌جا توی پیاده‌رو با نفس عمیق و گوش دادن به صدای شهر آروم کردم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-nofel-middle',
+                lat: 35.69688,
+                lng: 51.41085,
+                locationTitle: 'نوفل‌لوشاتو، نزدیک تقاطع خارک',
+                memories: [
+                    {
+                        author: 'کاوه، معمار',
+                        date: 'مهر ۱۴۰۰',
+                        text: 'جمعه بعدازظهرهای نوفل‌لوشاتو عجیب‌ترین سکوت تهران رو داره. زیر سایه درخت‌ها قدم می‌زدیم و فکر می‌کردیم شهر فقط مال ماست.'
+                    },
+                    {
+                        author: 'نیلوفر',
+                        date: 'آبان ۱۴۰۲',
+                        text: 'پنجره‌های چوبی ساختمان‌های قدیمی این بخش همیشه منو به تهران دهه پنجاه می‌بره.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-hafez-bridge-nofel',
+                lat: 35.69695,
+                lng: 51.41338,
+                locationTitle: 'حاشیه پل حافظ و نوفل‌لوشاتو',
+                memories: [
+                    {
+                        author: 'آرش، ۳۵ ساله',
+                        date: 'آذر ۱۴۰۱',
+                        text: 'تضاد عجیب سازه آهنی و پرسروصدای پل حافظ با دیوارهای آجری و درخت‌های کهنسال باغ کنارش همیشه برام مثل یه فیلم سینمایی بود.'
+                    },
+                    {
+                        author: 'سینا',
+                        date: 'فروردین ۱۴۰۳',
+                        text: 'صبح جمعه ساعت هفت اینجا فقط صدای کلاغ‌ها و باد لای برگ‌های چنار می‌اومد؛ اصلاً باورکردنی نبود وسط تهرانیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-ghazali-wall',
+                lat: 35.69662,
+                lng: 51.41595,
+                locationTitle: 'دیوار آجری باغ سفارت و نوفل‌لوشاتو',
+                memories: [
+                    {
+                        author: 'ترانه، ۲۷ ساله',
+                        date: 'اردیبهشت ۱۴۰۳',
+                        text: 'پیاده‌روی کنار این دیوارهای بلند آجری که شاخه‌های درختان صدساله از بالاشون آویزون شده، خنک‌ترین و ساکت‌ترین نقطه مرکز تهرانه.'
+                    },
+                    {
+                        author: 'مسعود',
+                        date: 'مهر ۱۴۰۲',
+                        text: 'همیشه کنجکاو بودم پشت این دیوارهای بلند چه خبره؛ گاهی عصرها صدای پرنده‌هایی می‌اومد که هیچ جای دیگه شهر نمی‌شنیدی.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-college-east',
+                lat: 35.70142,
+                lng: 51.41548,
+                locationTitle: 'شرق پل کالج، حاشیه خیابان انقلاب',
+                memories: [
+                    {
+                        author: 'پدرام',
+                        date: 'فروردین ۱۴۰۱',
+                        text: 'عصرهای بهار از میدان فردوسی تا پل کالج رو پیاده برمی‌گشتیم و توی همین پیاده‌رو ساعت‌ها درباره فیلم‌هایی که دیده بودیم بحث می‌کردیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-ferdowsi-north',
+                lat: 35.70088,
+                lng: 51.41875,
+                locationTitle: 'نزدیک میدان فردوسی و کوچه کندوان',
+                memories: [
+                    {
+                        author: 'سهراب، معمار و پژوهشگر',
+                        date: 'فروردین ۱۴۰۲',
+                        text: 'ستون‌های سنگی و معماری باوقار اطراف فردوسی یادگار روزگاریه که اینجا قلب تپنده مدرنیسم تهران بود.'
+                    },
+                    {
+                        author: 'مهرداد',
+                        date: 'آذر ۱۴۰۰',
+                        text: 'هر وقت کار اداری توی مرکز شهر داشتم، حتماً آخرش می‌اومدم اینجا کنار میدان یه دور می‌زدم تا حالم عوض شه.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-ferdowsi-sadeq',
+                lat: 35.69822,
+                lng: 51.41888,
+                locationTitle: 'خیابان فردوسی، تقاطع صادق',
+                memories: [
+                    {
+                        author: 'لیلا',
+                        date: 'دی ۱۴۰۱',
+                        text: 'پدربزرگم همیشه کیف چرمی دست‌دوزش رو از همین محدوده فردوسی می‌خرید و وقتی از اینجا رد می‌شدیم برامون از تهرون قدیم تعریف می‌کرد.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-west-edge-alley',
+                lat: 35.69852,
+                lng: 51.40315,
+                locationTitle: 'کوچه‌های غربی خیابان ولیعصر',
+                memories: [
+                    {
+                        author: 'بهاره، طراح گرافیک',
+                        date: 'خرداد ۱۴۰۲',
+                        text: 'کارگاه کوچک چاپ سیلک دوستم توی یکی از همین بن‌بست‌ها بود؛ بوی رنگ و چای تازه‌دمش هنوز یادمه.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-kandovan-tamaddon',
+                lat: 35.70028,
+                lng: 51.41752,
+                locationTitle: 'کوچه کندوان و تمدن',
+                memories: [
+                    {
+                        author: 'حامد، ۳۸ ساله',
+                        date: 'پاییز ۱۳۹۹',
+                        text: 'توی این کوچه یه عکاسی آنالوگ قدیمی بود که نگاتیوهام رو اونجا ظاهر می‌کردم؛ هنوز بوی داروی ظهورش رو یادمه.'
+                    },
+                    {
+                        author: 'گلناز',
+                        date: 'اردیبهشت ۱۴۰۲',
+                        text: 'ساختمون‌های سیمانیِ دهه چهل این کوچه بالکن‌هایی دارن پر از شمعدونی قرمز که هر بهار جون می‌گیرن.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-abiverd-kimiya',
+                lat: 35.70042,
+                lng: 51.41655,
+                locationTitle: 'بن‌بست‌های ابیورد و کیمیا',
+                memories: [
+                    {
+                        author: 'شایان، ۲۵ ساله',
+                        date: 'تابستان ۱۴۰۱',
+                        text: 'وسط هیاهوی خیابون انقلاب، کافیه سی قدم بپیچی داخل این کوچه‌ها تا ناگهان انگار صدای کل شهر رو روی سایلنت گذاشته باشن.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-college-alborz',
+                lat: 35.69982,
+                lng: 51.41375,
+                locationTitle: 'حوالی دبیرستان البرز و تقاطع حافظ',
+                memories: [
+                    {
+                        author: 'دکتر فروزان، فارغ‌التحصیل قدیم',
+                        date: 'خاطره دهه شصت',
+                        text: 'آجرچینی‌های فیروزه‌ای و حیاط بزرگ این حوالی هنوز هر بار از کنارش رد می‌شم منو برمی‌گردونه به هفده‌سالگی و زنگ تفریح‌های پاییزی.'
+                    },
+                    {
+                        author: 'امیرعلی',
+                        date: 'آبان ۱۴۰۳',
+                        text: 'کنار دیوار آجری این تقاطع همیشه یکی از بهترین نورهای غروب برای طراحی اسکیس شهریه.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-ghazali-north',
+                lat: 35.69715,
+                lng: 51.41465,
+                locationTitle: 'ضلع شمالی باغ و خیابان غزالی',
+                memories: [
+                    {
+                        author: 'سحر، عکاس مستند',
+                        date: 'اسفند ۱۴۰۱',
+                        text: 'نور خورشید عصر وقتی از لای شاخه‌های بلند باغ می‌تابه روی پیاده‌رو، سایه‌هایی می‌سازه که شبیه نقاشی خطی‌ان.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-nofel-goharshad',
+                lat: 35.69588,
+                lng: 51.41485,
+                locationTitle: 'تقاطع نوفل‌لوشاتو و کوچه گوهرشاد',
+                memories: [
+                    {
+                        author: 'مجید، ۵۰ ساله',
+                        date: 'خاطره قدیمی',
+                        text: 'توی کوچه گوهرشاد یه تعمیرگاه ساعت دیواری قدیمی بود؛ وقتی درش رو باز می‌کردی صدای تیک‌تاک پنجاه تا ساعت با هم می‌اومد.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-hafez-south-nofel',
+                lat: 35.69555,
+                lng: 51.41268,
+                locationTitle: 'حاشیه خیابان حافظ، جنوب نوفل‌لوشاتو',
+                memories: [
+                    {
+                        author: 'آیدا، ۲۸ ساله',
+                        date: 'تیر ۱۴۰۲',
+                        text: 'بعد از امتحانات دانشگاه با بچه‌ها از اینجا تا حسن‌آباد پیاده می‌رفتیم و بستنی می‌خوردیم؛ گرمای تیرماه تهران با اون خنده‌ها یادم نمی‌ره.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-nofel-saeb-corner',
+                lat: 35.69578,
+                lng: 51.40992,
+                locationTitle: 'میانه نوفل‌لوشاتو و کوچه‌های جنوبی',
+                memories: [
+                    {
+                        author: 'کسری، نوازنده گیتار',
+                        date: 'مهر ۱۴۰۱',
+                        text: 'اتاق تمرین گروه‌مون توی زیرزمین یکی از همین خونه‌ها بود؛ شنبه‌ها عصر همه با ساز روی دوش از این کوچه رد می‌شدیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-khark-shahriar',
+                lat: 35.69928,
+                lng: 51.40932,
+                locationTitle: 'خیابان خارک، نبش شهریار',
+                memories: [
+                    {
+                        author: 'تینا، دانشجوی موسیقی',
+                        date: 'آذر ۱۴۰۲',
+                        text: 'بوی چوب ساز از کارگاه‌های سازسازی این محدوده می‌اومد بیرون؛ هر بار رد می‌شدم چند لحظه وایمیستادم و نفس عمیق می‌کشیدم.'
+                    },
+                    {
+                        author: 'فرشید',
+                        date: 'دی ۱۳۹۹',
+                        text: 'توی سرمای دی‌ماه، دست‌هامون توی جیب و با دو تا لیوان چای داغ اینجا منتظر باز شدن در سالن بودیم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-razi-farda-mahbod',
+                lat: 35.69758,
+                lng: 51.40718,
+                locationTitle: 'کوچه مهبد و فردا',
+                memories: [
+                    {
+                        author: 'نرگس، ۳۶ ساله',
+                        date: 'اردیبهشت ۱۴۰۰',
+                        text: 'کوچه‌های این قسمت هنوز پلاک‌های آبی قدیمی و درهای آهنی فرفورژه دارن؛ انگار زمان بیست سال اینجا کندتر حرکت کرده.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-saeb-alley',
+                lat: 35.69672,
+                lng: 51.40755,
+                locationTitle: 'کوچه صائب، بین ولیعصر و رازی',
+                memories: [
+                    {
+                        author: 'علیرضا، تصویرساز',
+                        date: 'بهمن ۱۴۰۱',
+                        text: 'دفتر کوچیک ما طبقه سوم یه ساختمون بی‌آسانسور توی همین کوچه بود؛ از پنجره‌ش فقط پشت‌بوم‌های شیروانی و کله تئاتر شهر پیدا بود.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-shahriar-west',
+                lat: 35.69942,
+                lng: 51.40775,
+                locationTitle: 'ورودی خیابان شهریار از پارک دانشجو',
+                memories: [
+                    {
+                        author: 'سپیده، ۲۳ ساله',
+                        date: 'مهر ۱۴۰۳',
+                        text: 'اولین باری که تنها اومدم تهران، نقشه‌م رو همین‌جا باز کردم و از یه آقای مسن آدرس پرسیدم؛ تا خود سر کوچه همراهم اومد که گم نشم.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-enqelab-hafez-west',
+                lat: 35.70098,
+                lng: 51.41428,
+                locationTitle: 'پیاده‌رو خیابان انقلاب، شرق حافظ',
+                memories: [
+                    {
+                        author: 'رامین',
+                        date: 'اسفند ۱۴۰۲',
+                        text: 'غروب‌های اسفند اینجا پر از بوی بهارنارنج و شلوغی شیرین خرید کتاب و هدیه بود.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-nofel-ferdowsi-east',
+                lat: 35.69595,
+                lng: 51.41585,
+                locationTitle: 'انتهای شرقی نوفل‌لوشاتو به سمت فردوسی',
+                memories: [
+                    {
+                        author: 'مهناز، ۴۴ ساله',
+                        date: 'آبان ۱۳۹۸',
+                        text: 'هر پاییز برگ‌های چنار این خیابون انقدر ضخیم روی زمین می‌ریخت که وقتی راه می‌رفتی صدای خش‌خشش از صدای ماشین‌ها بلندتر بود.'
+                    }
+                ]
+            },
+            {
+                id: 'pin-pars-ferdowsi',
+                lat: 35.69782,
+                lng: 51.41828,
+                locationTitle: 'کوچه پارس و تقاطع صادق',
+                memories: [
+                    {
+                        author: 'کامران، مترجم',
+                        date: 'تابستان ۱۴۰۱',
+                        text: 'ظهرهای گرم تابستون توی سایه این کوچه باریک می‌ایستادم و فصل آخر رمانی که ترجمه می‌کردم رو توی دفترچه جیبی‌م یادداشت می‌کردم.'
+                    }
+                ]
+            }
+        ];
+
+        /***********************************************************************
+         * 3. STATE & INITIALIZATION
+         ***********************************************************************/
+        let map;
+        let pinsData = [];
+        let markersMap = {};
+        let specialMarkersMap = {};
+        let screenMarkersMap = {};
+        let currentPopup = null;
+        let tempNewMarker = null;
+        let tempDraftLatLng = null;
+        let isAddPinMode = false;
+        let activePopupPinId = null;
+        let selectedScreenId = null;
+        let isLayersPanelOpen = false;
+
+        // Extensible Layers toggle state
+        const layersState = {
+            screens: true,
+            specialMemories: true,
+            boundary: true,
+            allMemories: false
+        };
+
+        // Layer references for pure white-and-black CAD linework & toggleable layers
+        let cartoFallbackTileLayer = null;
+        let osmBuildingsLayerGroup = null;
+        let osmFootwaysLayerGroup = null;
+        let osmStreetsCasingGroup = null;
+        let osmStreetsFillGroup = null;
+        let screensLayerGroup = null;
+        let specialPinsLayerGroup = null;
+        let memoryPinsLayerGroup = null;
+        let activeScreenLinksLayerGroup = null;
+        let hoverNearestLinkLine = null;
+        let boundaryPolygonLayer = null;
+        let osmRoadLayersMeta = [];
+        let osmBuildingLayers = [];
+
+        /***********************************************************************
+         * 3.5. NEAREST-SCREEN MATCHING ALGORITHM (HAVERSINE DISTANCE)
+         ***********************************************************************/
+        function getDistanceMeters(lat1, lng1, lat2, lng2) {
+            const R = 6371000;
+            const toRad = deg => deg * Math.PI / 180;
+            const dLat = toRad(lat2 - lat1);
+            const dLng = toRad(lng2 - lng1);
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        function findNearestScreen(lat, lng) {
+            let bestScreen = SCREEN_PINS_DATA[0];
+            let minDist = Infinity;
+
+            for (let i = 0; i < SCREEN_PINS_DATA.length; i++) {
+                const s = SCREEN_PINS_DATA[i];
+                const d = getDistanceMeters(lat, lng, s.lat, s.lng);
+                if (d < minDist) {
+                    minDist = d;
+                    bestScreen = s;
+                }
+            }
+            return { screen: bestScreen, distanceMeters: Math.round(minDist) };
+        }
+
+        function getScreenById(screenId) {
+            return SCREEN_PINS_DATA.find(s => s.id === screenId) || null;
+        }
+
+        function getRegularPins() {
+            return pinsData.filter(p => !p.isSpecial);
+        }
+
+        function getSpecialPins() {
+            return pinsData.filter(p => p.isSpecial);
+        }
+
+        function getPinsForScreen(screenId) {
+            return pinsData.filter(p => !p.isSpecial && p.screenId === screenId);
+        }
+
+        function ensurePinsLinkedToNearestScreen(list) {
+            return list.map(pin => {
+                const nearest = findNearestScreen(pin.lat, pin.lng);
+                return {
+                    ...pin,
+                    screenId: nearest.screen.id
+                };
+            });
+        }
+
+        // IndexedDB persistent cache so real OSM SVG linework loads rapidly on repeat visits
+        const CAD_CACHE_DB_NAME = 'tehran_memory_cad_cache_v1';
+        const CAD_CACHE_STORE = 'cad_vectors';
+        const CAD_CACHE_KEY = 'enqelab_ferdowsi_cad_v3';
+
+        function openCadCacheDB() {
+            return new Promise((resolve, reject) => {
+                if (!window.indexedDB) {
+                    reject(new Error('IndexedDB unavailable'));
+                    return;
+                }
+                const req = indexedDB.open(CAD_CACHE_DB_NAME, 1);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(CAD_CACHE_STORE)) {
+                        db.createObjectStore(CAD_CACHE_STORE);
+                    }
+                };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        async function getCachedOsmCadData() {
+            try {
+                const db = await openCadCacheDB();
+                return await new Promise((resolve) => {
+                    const tx = db.transaction(CAD_CACHE_STORE, 'readonly');
+                    const store = tx.objectStore(CAD_CACHE_STORE);
+                    const req = store.get(CAD_CACHE_KEY);
+                    req.onsuccess = () => resolve(req.result || null);
+                    req.onerror = () => resolve(null);
+                });
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function saveCachedOsmCadData(dataset) {
+            try {
+                const db = await openCadCacheDB();
+                await new Promise((resolve) => {
+                    const tx = db.transaction(CAD_CACHE_STORE, 'readwrite');
+                    tx.objectStore(CAD_CACHE_STORE).put(dataset, CAD_CACHE_KEY);
+                    tx.oncomplete = () => resolve();
+                    tx.onerror = () => resolve();
+                });
+            } catch (e) {
+                // Ignore quota or private-mode errors
+            }
+        }
+
+        function loadPinsFromStorage() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        const validInside = parsed.filter(p => isPointInsideStudyPolygon(p.lat, p.lng));
+                        pinsData = ensurePinsLinkedToNearestScreen(validInside);
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn('Storage read fallback to demo pins:', e);
+            }
+            pinsData = ensurePinsLinkedToNearestScreen(JSON.parse(JSON.stringify(DEFAULT_DEMO_PINS)));
+            savePinsToStorage();
+        }
+
+        function savePinsToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(pinsData));
+            } catch (e) {
+                console.warn('Could not persist to localStorage:', e);
+            }
+            updateStatsUI();
+        }
+
+        function updateStatsUI() {
+            const totalPins = pinsData.length;
+            const totalMemories = pinsData.reduce((acc, p) => acc + (p.memories ? p.memories.length : 0), 0);
+            const activeScreens = layersState.screens ? SCREEN_PINS_DATA.length : 0;
+            const specialCount = getSpecialPins().length;
+
+            const screensEl = document.getElementById('statScreensCount');
+            if (screensEl) screensEl.textContent = activeScreens.toLocaleString('fa-IR');
+
+            const layerScreensCountEl = document.getElementById('layerScreensCount');
+            if (layerScreensCountEl) layerScreensCountEl.textContent = SCREEN_PINS_DATA.length.toLocaleString('fa-IR');
+
+            const layerSpecialCountEl = document.getElementById('layerSpecialCount');
+            if (layerSpecialCountEl) layerSpecialCountEl.textContent = specialCount.toLocaleString('fa-IR');
+
+            const pinsEl = document.getElementById('statPinsCount');
+            if (pinsEl) pinsEl.textContent = totalPins.toLocaleString('fa-IR');
+
+            const memsEl = document.getElementById('statMemoriesCount');
+            if (memsEl) memsEl.textContent = totalMemories.toLocaleString('fa-IR');
+        }
+
+        /***********************************************************************
+         * 4. PURE WHITE & BLACK ARCHITECTURAL CAD LINEWORK MAP ENGINE
+         ***********************************************************************/
+        function initMap() {
+            loadPinsFromStorage();
+
+            map = L.map('map', {
+                center: [35.6982, 51.4114],
+                zoom: 16,
+                minZoom: 15,
+                maxZoom: 19,
+                maxBounds: MAX_PAN_BOUNDS_LATLNG,
+                maxBoundsViscosity: 0.85,
+                zoomControl: false,
+                attributionControl: false,
+                doubleClickZoom: false,
+                renderer: L.svg()
+            });
+
+            // Ordered SVG panes for seamless CAD intersections
+            map.createPane('cadBuildingsPane');
+            map.getPane('cadBuildingsPane').style.zIndex = 410;
+
+            map.createPane('cadFootwaysPane');
+            map.getPane('cadFootwaysPane').style.zIndex = 415;
+
+            map.createPane('cadRoadCasingPane');
+            map.getPane('cadRoadCasingPane').style.zIndex = 420;
+
+            map.createPane('cadRoadFillPane');
+            map.getPane('cadRoadFillPane').style.zIndex = 425;
+
+            map.createPane('cadBoundaryPane');
+            map.getPane('cadBoundaryPane').style.zIndex = 440;
+
+            map.createPane('cadLinksPane');
+            map.getPane('cadLinksPane').style.zIndex = 445;
+
+            // Ultra-light monochrome fallback tiles (fades out once crisp OSM SVG lines load)
+            cartoFallbackTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+                subdomains: 'abcd',
+                maxZoom: 19,
+                opacity: 0.82
+            }).addTo(map);
+
+            // Vector groups for CAD linework
+            osmBuildingsLayerGroup = L.layerGroup().addTo(map);
+            osmFootwaysLayerGroup = L.layerGroup().addTo(map);
+            osmStreetsCasingGroup = L.layerGroup().addTo(map);
+            osmStreetsFillGroup = L.layerGroup().addTo(map);
+
+            // Toggleable Layers & Dynamic Screen-to-Memory Link groups
+            activeScreenLinksLayerGroup = L.layerGroup().addTo(map);
+            memoryPinsLayerGroup = L.layerGroup().addTo(map);
+            screensLayerGroup = L.layerGroup().addTo(map);
+            specialPinsLayerGroup = L.layerGroup().addTo(map);
+
+            // Exact Red Boundary Frame
+            boundaryPolygonLayer = L.polygon(STUDY_POLYGON_LATLNG, {
+                pane: 'cadBoundaryPane',
+                color: '#e53935',
+                weight: 3.5,
+                opacity: 0.96,
+                fill: false,
+                lineJoin: 'miter',
+                interactive: false
+            }).addTo(map);
+
+            // Fit bounds cleanly to the study rectangle
+            fitMapToScreenshotFrame(false);
+
+            // Load real OpenStreetMap SVG vector linework (buildings, streets, alleys & dead-ends)
+            fetchRealOSMStreetsAndBuildings();
+
+            // Render navy Screens pins & dedicated Special Memories layer; regular red pins stay hidden until a Screen is clicked
+            renderScreenPins();
+            renderSpecialPins();
+            renderAllPins(false);
+            updateLayersUI();
+
+            // Live dashed preview line to nearest Screen while moving mouse in Add Pin Mode
+            map.on('mousemove', (e) => {
+                if (!isAddPinMode || tempNewMarker) {
+                    clearHoverNearestLink();
+                    return;
+                }
+                if (!isPointInsideStudyPolygon(e.latlng.lat, e.latlng.lng)) {
+                    clearHoverNearestLink();
+                    return;
+                }
+                const nearest = findNearestScreen(e.latlng.lat, e.latlng.lng);
+                const latlngs = [
+                    [nearest.screen.lat, nearest.screen.lng],
+                    [e.latlng.lat, e.latlng.lng]
+                ];
+                if (hoverNearestLinkLine) {
+                    hoverNearestLinkLine.setLatLngs(latlngs);
+                } else {
+                    hoverNearestLinkLine = L.polyline(latlngs, {
+                        pane: 'cadLinksPane',
+                        color: '#e53935',
+                        weight: 1.8,
+                        opacity: 0.75,
+                        dashArray: '4, 4',
+                        interactive: false
+                    }).addTo(map);
+                }
+            });
+
+            map.on('mouseout', () => {
+                clearHoverNearestLink();
+            });
+
+            // Click on map: place pin if in Add Pin Mode, otherwise close current popup
+            map.on('click', (e) => {
+                if (isAddPinMode) {
+                    if (!isPointInsideStudyPolygon(e.latlng.lat, e.latlng.lng)) {
+                        showToast('لطفاً پین را فقط داخل محدوده خط قرمز قرار دهید.');
+                        return;
+                    }
+                    openNewPinCreationPopup(e.latlng.lat, e.latlng.lng);
+                } else {
+                    closeCurrentPopup(true);
+                }
+            });
+
+            // Double click inside red boundary to place a new memory pin
+            map.on('dblclick', (e) => {
+                if (e.originalEvent) e.originalEvent.preventDefault();
+                if (!isPointInsideStudyPolygon(e.latlng.lat, e.latlng.lng)) {
+                    showToast('ثبت خاطره فقط داخل محدوده مشخص‌شده با کادر قرمز مجاز است.');
+                    return;
+                }
+                openNewPinCreationPopup(e.latlng.lat, e.latlng.lng);
+            });
+
+            // Dynamically scale CAD road and building stroke weights on zoom
+            map.on('zoomend', () => {
+                updateCadStrokeWidths();
+            });
+        }
+
+        function isPointInsideStudyPolygon(lat, lng) {
+            let inside = false;
+            const poly = STUDY_POLYGON_LATLNG;
+            for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+                const yi = poly[i][0], xi = poly[i][1];
+                const yj = poly[j][0], xj = poly[j][1];
+                const intersect = ((yi > lat) !== (yj > lat)) &&
+                    (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+                if (intersect) inside = !inside;
+            }
+            return inside;
+        }
+
+        function fitMapToScreenshotFrame(animate = true) {
+            map.fitBounds(STUDY_BOUNDS_LATLNG, {
+                paddingTopLeft: [45, 75],
+                paddingBottomRight: [45, 65],
+                animate: animate
+            });
+        }
+
+        /***********************************************************************
+         * 5. FAST PROGRESSIVE & BATCHED OPENSTREETMAP CAD LINEWORK RENDERING
+         ***********************************************************************/
+        function getRoadWidthsForZoom(category, zoom) {
+            const scale = zoom <= 15 ? 0.72 : (zoom === 16 ? 1.0 : (zoom === 17 ? 1.45 : (zoom === 18 ? 2.1 : 2.8)));
+            const base = {
+                major:  { casing: 8.6, fill: 6.4 },
+                medium: { casing: 6.0, fill: 4.2 },
+                minor:  { casing: 4.0, fill: 2.4 },
+                alley:  { casing: 2.6, fill: 1.3 }
+            }[category] || { casing: 2.6, fill: 1.3 };
+
+            return {
+                casingWeight: +(base.casing * scale).toFixed(2),
+                fillWeight: +Math.max(0.8, base.fill * scale).toFixed(2)
+            };
+        }
+
+        function updateCadStrokeWidths() {
+            if (!map) return;
+            const currentZoom = map.getZoom();
+            osmRoadLayersMeta.forEach(({ casing, fill, category }) => {
+                const { casingWeight, fillWeight } = getRoadWidthsForZoom(category, currentZoom);
+                casing.setStyle({ weight: casingWeight });
+                fill.setStyle({ weight: fillWeight });
+            });
+            const bWeight = currentZoom >= 18 ? 0.95 : (currentZoom >= 17 ? 0.8 : 0.62);
+            osmBuildingLayers.forEach(layer => {
+                layer.setStyle({ weight: bWeight });
+            });
+        }
+
+        function renderStreetsDataset(roads, footways) {
+            if (!map) return;
+            const currentZoom = map.getZoom();
+
+            osmFootwaysLayerGroup.clearLayers();
+            osmStreetsCasingGroup.clearLayers();
+            osmStreetsFillGroup.clearLayers();
+            osmRoadLayersMeta = [];
+
+            // Batch footways & walls into at most 2 SVG MultiPolylines (solid & dashed)
+            const solidFootways = [];
+            const dashedFootways = [];
+            (footways || []).forEach(fw => {
+                if (fw.dashed) dashedFootways.push(fw.coords);
+                else solidFootways.push(fw.coords);
+            });
+
+            if (solidFootways.length > 0) {
+                L.polyline(solidFootways, {
+                    pane: 'cadFootwaysPane',
+                    color: '#333333',
+                    weight: 0.75,
+                    opacity: 0.72,
+                    smoothFactor: 0.6,
+                    interactive: false
+                }).addTo(osmFootwaysLayerGroup);
+            }
+            if (dashedFootways.length > 0) {
+                L.polyline(dashedFootways, {
+                    pane: 'cadFootwaysPane',
+                    color: '#333333',
+                    weight: 0.75,
+                    opacity: 0.72,
+                    dashArray: '2, 2',
+                    smoothFactor: 0.6,
+                    interactive: false
+                }).addTo(osmFootwaysLayerGroup);
+            }
+
+            // Group roads by hierarchy and draw each category as 1 MultiPolyline casing + 1 MultiPolyline fill
+            const roadsByCategory = { alley: [], minor: [], medium: [], major: [] };
+            (roads || []).forEach(rd => {
+                const bucket = roadsByCategory[rd.category] || roadsByCategory.alley;
+                bucket.push(rd.coords);
+            });
+
+            const drawOrder = ['alley', 'minor', 'medium', 'major'];
+            drawOrder.forEach(category => {
+                const coordsList = roadsByCategory[category];
+                if (!coordsList || coordsList.length === 0) return;
+
+                const { casingWeight, fillWeight } = getRoadWidthsForZoom(category, currentZoom);
+
+                const casingLine = L.polyline(coordsList, {
+                    pane: 'cadRoadCasingPane',
+                    color: '#1a1a1a',
+                    weight: casingWeight,
+                    opacity: 0.92,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    smoothFactor: 0.5,
+                    interactive: false
+                }).addTo(osmStreetsCasingGroup);
+
+                const fillLine = L.polyline(coordsList, {
+                    pane: 'cadRoadFillPane',
+                    color: '#ffffff',
+                    weight: fillWeight,
+                    opacity: 1,
+                    lineCap: 'round',
+                    lineJoin: 'round',
+                    smoothFactor: 0.5,
+                    interactive: false
+                }).addTo(osmStreetsFillGroup);
+
+                osmRoadLayersMeta.push({ casing: casingLine, fill: fillLine, category });
+            });
+        }
+
+        function renderBuildingsDataset(buildings) {
+            if (!map) return;
+            const currentZoom = map.getZoom();
+            const bWeight = currentZoom >= 18 ? 0.95 : (currentZoom >= 17 ? 0.8 : 0.62);
+
+            osmBuildingsLayerGroup.clearLayers();
+            osmBuildingLayers = [];
+
+            // Batch hundreds of building footprints into a handful of SVG MultiPolygons for instant rendering & 60fps zoom
+            const list = buildings || [];
+            const BATCH_SIZE = 400;
+            for (let i = 0; i < list.length; i += BATCH_SIZE) {
+                const multiPolyCoords = list.slice(i, i + BATCH_SIZE).map(ring => [ring]);
+                const bBatch = L.polygon(multiPolyCoords, {
+                    pane: 'cadBuildingsPane',
+                    color: '#1f1f1f',
+                    weight: bWeight,
+                    opacity: 0.9,
+                    fillColor: '#ffffff',
+                    fillOpacity: 1,
+                    fillRule: 'nonzero',
+                    smoothFactor: 0.4,
+                    interactive: false
+                }).addTo(osmBuildingsLayerGroup);
+                osmBuildingLayers.push(bBatch);
+            }
+        }
+
+        function updateOsmLoadStatus(bCount, rCount, isPartial = false) {
+            const statusEl = document.getElementById('osmStatusText');
+            const dotEl = document.getElementById('osmDot');
+            if (!statusEl || !dotEl) return;
+
+            if (isPartial) {
+                statusEl.textContent = `${rCount.toLocaleString('fa-IR')} خیابان و کوچه بارگذاری شد — در حال تکمیل پلان ساختمان‌ها...`;
+                dotEl.className = 'w-1.5 h-1.5 rounded-full bg-amber-500 inline-block';
+            } else {
+                statusEl.textContent = `${bCount.toLocaleString('fa-IR')} پلان ساختمان و ${rCount.toLocaleString('fa-IR')} خیابان، کوچه و بن‌بست واقعی بارگذاری شد`;
+                dotEl.className = 'w-1.5 h-1.5 rounded-full bg-red-600 inline-block';
+            }
+        }
+
+        function renderCadGeometryDataset(dataset) {
+            if (!dataset || !map) return;
+            renderStreetsDataset(dataset.roads, dataset.footways);
+            renderBuildingsDataset(dataset.buildings);
+
+            // Fade out fallback tiles once crisp real CAD SVG vectors are drawn
+            if (cartoFallbackTileLayer) {
+                cartoFallbackTileLayer.setOpacity(0);
+            }
+            updateOsmLoadStatus((dataset.buildings || []).length, (dataset.roads || []).length, false);
+        }
+
+        function parseStreetsOverpassGeom(osmData) {
+            const roads = [];
+            const footways = [];
+
+            (osmData.elements || []).forEach(el => {
+                if (el.type !== 'way' || !el.geometry || !el.tags) return;
+                const coords = el.geometry.map(pt => [pt.lat, pt.lon]);
+                if (coords.length < 2) return;
+
+                if (el.tags.highway) {
+                    const hw = el.tags.highway;
+                    if (['footway', 'path', 'pedestrian', 'steps', 'cycleway'].includes(hw)) {
+                        footways.push({ coords, dashed: hw === 'steps' });
+                        return;
+                    }
+
+                    let category = 'alley';
+                    if (['trunk', 'primary', 'trunk_link', 'primary_link'].includes(hw)) {
+                        category = 'major';
+                    } else if (['secondary', 'tertiary', 'secondary_link', 'tertiary_link'].includes(hw)) {
+                        category = 'medium';
+                    } else if (['residential', 'unclassified', 'living_street'].includes(hw)) {
+                        category = 'minor';
+                    }
+                    roads.push({ category, coords });
+                } else if (el.tags.barrier === 'wall') {
+                    footways.push({ coords, dashed: false });
+                }
+            });
+
+            return { roads, footways };
+        }
+
+        function parseBuildingsOverpassGeom(osmData) {
+            const buildings = [];
+            (osmData.elements || []).forEach(el => {
+                if (el.type !== 'way' || !el.geometry || el.geometry.length < 3) return;
+                buildings.push(el.geometry.map(pt => [pt.lat, pt.lon]));
+            });
+            return buildings;
+        }
+
+        function fetchFastestOverpassMirror(query, endpoints, timeoutMs = 15000) {
+            return new Promise((resolve, reject) => {
+                const controllers = endpoints.map(() => new AbortController());
+                let failures = 0;
+                let settled = false;
+
+                const timer = setTimeout(() => {
+                    if (!settled) {
+                        settled = true;
+                        controllers.forEach(c => c.abort());
+                        reject(new Error('Overpass request timed out'));
+                    }
+                }, timeoutMs);
+
+                endpoints.forEach((url, idx) => {
+                    fetch(url, {
+                        method: 'POST',
+                        body: query,
+                        signal: controllers[idx].signal
+                    })
+                        .then(res => {
+                            if (!res.ok) throw new Error('HTTP ' + res.status);
+                            return res.json();
+                        })
+                        .then(data => {
+                            if (!data || !data.elements || data.elements.length === 0) {
+                                throw new Error('Empty OSM payload');
+                            }
+                            if (!settled) {
+                                settled = true;
+                                clearTimeout(timer);
+                                controllers.forEach((c, i) => { if (i !== idx) c.abort(); });
+                                resolve(data);
+                            }
+                        })
+                        .catch(() => {
+                            failures++;
+                            if (failures === endpoints.length && !settled) {
+                                settled = true;
+                                clearTimeout(timer);
+                                reject(new Error('All Overpass mirrors failed'));
+                            }
+                        });
+                });
+            });
+        }
+
+        async function fetchRealOSMStreetsAndBuildings() {
+            const cachedDataset = await getCachedOsmCadData();
+            if (cachedDataset && cachedDataset.buildings && cachedDataset.buildings.length > 0) {
+                renderCadGeometryDataset(cachedDataset);
+                return;
+            }
+
+            // Tighter bounding box tailored to the study zone + rotated viewport margins (~30% less data)
+            const bbox = '35.6930,51.4002,35.7038,51.4222';
+
+            // Stage 1: Ultra-lightweight streets/alleys/walls query (returns in ~0.5–1.5s)
+            const streetsQuery = `[out:json][timeout:14];(way["highway"](${bbox});way["barrier"="wall"](${bbox}););out tags geom qt;`;
+
+            // Stage 2: Tagless building footprints query ("out geom qt" cuts JSON size by ~60%)
+            const buildingsQuery = `[out:json][timeout:18];way["building"](${bbox});out geom qt;`;
+
+            const streetEndpoints = [
+                'https://overpass-api.de/api/interpreter',
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://lz4.overpass-api.de/api/interpreter',
+                'https://overpass.private.coffee/api/interpreter'
+            ];
+
+            // Rotated mirror order for Stage 2 so parallel requests avoid single-mirror rate limits
+            const buildingEndpoints = [
+                'https://overpass.kumi.systems/api/interpreter',
+                'https://lz4.overpass-api.de/api/interpreter',
+                'https://overpass.private.coffee/api/interpreter',
+                'https://overpass-api.de/api/interpreter'
+            ];
+
+            let roads = [];
+            let footways = [];
+            let buildings = [];
+
+            const streetsPromise = fetchFastestOverpassMirror(streetsQuery, streetEndpoints, 14000)
+                .then(data => {
+                    const parsed = parseStreetsOverpassGeom(data);
+                    roads = parsed.roads;
+                    footways = parsed.footways;
+                    if (roads.length > 0) {
+                        renderStreetsDataset(roads, footways);
+                        if (cartoFallbackTileLayer && buildings.length === 0) {
+                            cartoFallbackTileLayer.setOpacity(0.32);
+                        }
+                        if (buildings.length === 0) {
+                            updateOsmLoadStatus(0, roads.length, true);
+                        }
+                    }
+                })
+                .catch(() => {});
+
+            const buildingsPromise = new Promise(resolve => setTimeout(resolve, 120))
+                .then(() => fetchFastestOverpassMirror(buildingsQuery, buildingEndpoints, 18000))
+                .catch(() => fetchFastestOverpassMirror(buildingsQuery, streetEndpoints, 18000))
+                .then(data => {
+                    buildings = parseBuildingsOverpassGeom(data);
+                    if (buildings.length > 0) {
+                        renderBuildingsDataset(buildings);
+                    }
+                })
+                .catch(() => {});
+
+            await Promise.all([streetsPromise, buildingsPromise]);
+
+            if (buildings.length > 0 || roads.length > 0) {
+                if (cartoFallbackTileLayer) {
+                    cartoFallbackTileLayer.setOpacity(0);
+                }
+                updateOsmLoadStatus(buildings.length, roads.length, false);
+                if (buildings.length > 0 && roads.length > 0) {
+                    saveCachedOsmCadData({ buildings, roads, footways });
+                }
+            } else {
+                if (cartoFallbackTileLayer) {
+                    cartoFallbackTileLayer.setOpacity(0.9);
+                }
+                const statusEl = document.getElementById('osmStatusText');
+                const dotEl = document.getElementById('osmDot');
+                if (statusEl && dotEl) {
+                    statusEl.textContent = 'نقشه خطی پایه فعال است';
+                    dotEl.className = 'w-1.5 h-1.5 rounded-full bg-neutral-800 inline-block';
+                }
+            }
+        }
+
+        /***********************************************************************
+         * 6. LAYERS SYSTEM, DARK NAVY "SCREENS" PINS & CAMERA PITCH TOGGLE
+         ***********************************************************************/
+        function toggleLayersPanel(event, forceState) {
+            if (event) event.stopPropagation();
+            isLayersPanelOpen = typeof forceState === 'boolean' ? forceState : !isLayersPanelOpen;
+            const panel = document.getElementById('layersPanel');
+            if (!panel) return;
+            if (isLayersPanelOpen) {
+                panel.classList.remove('hidden');
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+
+        function toggleLayer(layerKey) {
+            if (!(layerKey in layersState)) return;
+            layersState[layerKey] = !layersState[layerKey];
+
+            if (layerKey === 'screens') {
+                if (layersState.screens) {
+                    if (!map.hasLayer(screensLayerGroup)) screensLayerGroup.addTo(map);
+                } else {
+                    if (map.hasLayer(screensLayerGroup)) map.removeLayer(screensLayerGroup);
+                    deselectScreen();
+                }
+            } else if (layerKey === 'specialMemories') {
+                if (layersState.specialMemories) {
+                    if (!map.hasLayer(specialPinsLayerGroup)) specialPinsLayerGroup.addTo(map);
+                    renderSpecialPins();
+                } else {
+                    const activePin = pinsData.find(p => p.id === activePopupPinId);
+                    if (activePin && activePin.isSpecial) {
+                        closeCurrentPopup(true);
+                    }
+                    if (map.hasLayer(specialPinsLayerGroup)) map.removeLayer(specialPinsLayerGroup);
+                }
+            } else if (layerKey === 'boundary') {
+                if (layersState.boundary) {
+                    if (!map.hasLayer(boundaryPolygonLayer)) boundaryPolygonLayer.addTo(map);
+                } else {
+                    if (map.hasLayer(boundaryPolygonLayer)) map.removeLayer(boundaryPolygonLayer);
+                }
+            } else if (layerKey === 'allMemories') {
+                renderAllPins(false);
+                renderActiveScreenLinks();
+            }
+
+            updateLayersUI();
+            updateStatsUI();
+        }
+
+        function updateLayersUI() {
+            let activeCount = 0;
+            Object.keys(layersState).forEach(key => {
+                const isOn = layersState[key];
+                if (isOn) activeCount++;
+                const sw = document.getElementById(`layerSwitch-${key}`);
+                if (sw) {
+                    if (isOn) sw.classList.add('is-on');
+                    else sw.classList.remove('is-on');
+                }
+            });
+            const badge = document.getElementById('activeLayersCountBadge');
+            if (badge) badge.textContent = activeCount.toLocaleString('fa-IR');
+        }
+
+        function clearHoverNearestLink() {
+            if (hoverNearestLinkLine && map) {
+                map.removeLayer(hoverNearestLinkLine);
+                hoverNearestLinkLine = null;
+            }
+        }
+
+        function createScreenPinIcon(screenItem, isActive = false) {
+            const activeClass = isActive ? 'active-screen-pin' : '';
+            const linkedCount = getPinsForScreen(screenItem.id).length;
+
+            return L.divIcon({
+                className: 'custom-sketch-pin',
+                iconSize: [28, 36],
+                iconAnchor: [14, 34],
+                popupAnchor: [0, 0],
+                html: `
+                    <div class="upright-counter-rotate">
+                        <div class="screen-pin-wrapper ${activeClass}">
+                            ${isActive ? `<div class="screen-active-ring"></div>` : ''}
+                            ${linkedCount > 0 ? `<div class="screen-count-badge" title="${linkedCount.toLocaleString('fa-IR')} پین خاطره متصل به این اسکرین">${linkedCount.toLocaleString('fa-IR')}</div>` : ''}
+                            <svg width="28" height="36" viewBox="0 0 36 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 44 C18 44 31.5 26.5 31.5 16 C31.5 8.2 25.5 2.5 18 2.5 C10.5 2.5 4.5 8.2 4.5 16 C4.5 26.5 18 44 18 44 Z" 
+                                      fill="#0b1b45" stroke="#060e26" stroke-width="2.4" stroke-linejoin="round"/>
+                                <path d="M18 42.5 C18 42.5 29.5 26 29.5 16 C29.5 9.2 24.4 4.2 18 4.2" 
+                                      stroke="#4c6ef5" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>
+                                <circle cx="18" cy="15.5" r="4.8" fill="#ffffff" stroke="#060e26" stroke-width="2"/>
+                            </svg>
+                        </div>
+                    </div>
+                `
+            });
+        }
+
+        function highlightActiveScreenMarker(activeId) {
+            SCREEN_PINS_DATA.forEach(item => {
+                const marker = screenMarkersMap[item.id];
+                if (marker) {
+                    marker.setIcon(createScreenPinIcon(item, item.id === activeId));
+                }
+            });
+        }
+
+        function renderScreenPins() {
+            if (!screensLayerGroup) return;
+            screensLayerGroup.clearLayers();
+            screenMarkersMap = {};
+
+            SCREEN_PINS_DATA.forEach(item => {
+                const marker = L.marker([item.lat, item.lng], {
+                    icon: createScreenPinIcon(item, item.id === selectedScreenId),
+                    zIndexOffset: item.id === selectedScreenId ? 500 : 100
+                }).addTo(screensLayerGroup);
+
+                marker.on('click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    if (isAddPinMode) {
+                        if (isPointInsideStudyPolygon(item.lat, item.lng)) {
+                            openNewPinCreationPopup(item.lat, item.lng);
+                        }
+                        return;
+                    }
+                    if (selectedScreenId === item.id) {
+                        deselectScreen();
+                    } else {
+                        selectScreen(item.id, { animatePop: true, panToCluster: true });
+                    }
+                });
+
+                screenMarkersMap[item.id] = marker;
+            });
+
+            if (layersState.screens && !map.hasLayer(screensLayerGroup)) {
+                screensLayerGroup.addTo(map);
+            }
+            updateStatsUI();
+        }
+
+        function selectScreen(screenId, options = {}) {
+            const screen = getScreenById(screenId);
+            if (!screen) return;
+
+            const { animatePop = true, keepPopup = false, panToCluster = false } = options;
+
+            if (!keepPopup) {
+                closeCurrentPopup(true);
+            }
+
+            if (!layersState.screens) {
+                layersState.screens = true;
+                if (!map.hasLayer(screensLayerGroup)) screensLayerGroup.addTo(map);
+                updateLayersUI();
+            }
+
+            selectedScreenId = screen.id;
+            highlightActiveScreenMarker(screen.id);
+            renderAllPins(animatePop);
+            renderActiveScreenLinks();
+            updateActiveScreenBanner();
+
+            const linkedPins = getPinsForScreen(screen.id);
+            if (linkedPins.length === 0 && !tempDraftLatLng) {
+                showToast(`Screen #${screen.index.toLocaleString('fa-IR')} انتخاب شد — هنوز خاطره‌ای نزدیک این اسکرین ثبت نشده است.`);
+            } else if (panToCluster && linkedPins.length > 0) {
+                const pts = [[screen.lat, screen.lng], ...linkedPins.map(p => [p.lat, p.lng])];
+                const bounds = L.latLngBounds(pts);
+                if (!map.getBounds().contains(bounds)) {
+                    map.panTo(bounds.getCenter(), { animate: true, duration: 0.35 });
+                }
+            }
+        }
+
+        function deselectScreen() {
+            closeCurrentPopup(true);
+            selectedScreenId = null;
+            tempDraftLatLng = null;
+            highlightActiveScreenMarker(null);
+            renderActiveScreenLinks();
+            renderAllPins(false);
+            updateActiveScreenBanner();
+        }
+
+        function renderActiveScreenLinks() {
+            if (!activeScreenLinksLayerGroup) return;
+            activeScreenLinksLayerGroup.clearLayers();
+
+            if (!selectedScreenId) return;
+            const screen = getScreenById(selectedScreenId);
+            if (!screen) return;
+
+            const linkedPins = getPinsForScreen(selectedScreenId);
+            linkedPins.forEach(pin => {
+                L.polyline(
+                    [[screen.lat, screen.lng], [pin.lat, pin.lng]],
+                    {
+                        pane: 'cadLinksPane',
+                        color: '#0b1b45',
+                        weight: 1.6,
+                        opacity: 0.72,
+                        dashArray: '5, 5',
+                        interactive: false
+                    }
+                ).addTo(activeScreenLinksLayerGroup);
+            });
+
+            if (tempDraftLatLng) {
+                L.polyline(
+                    [[screen.lat, screen.lng], [tempDraftLatLng.lat, tempDraftLatLng.lng]],
+                    {
+                        pane: 'cadLinksPane',
+                        color: '#e53935',
+                        weight: 2.1,
+                        opacity: 0.88,
+                        dashArray: '4, 4',
+                        interactive: false
+                    }
+                ).addTo(activeScreenLinksLayerGroup);
+            }
+        }
+
+        function updateActiveScreenBanner() {
+            const banner = document.getElementById('activeScreenBanner');
+            const titleEl = document.getElementById('activeScreenTitle');
+            const countEl = document.getElementById('activeScreenCountText');
+            if (!banner || !titleEl || !countEl) return;
+
+            // Hide Screen info bar whenever a memory popup or new-memory form is open
+            if (!selectedScreenId || isAddPinMode || activePopupPinId || currentPopup) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            const screen = getScreenById(selectedScreenId);
+            if (!screen) {
+                banner.classList.add('hidden');
+                return;
+            }
+
+            const linkedPins = getPinsForScreen(selectedScreenId);
+            titleEl.textContent = `Screen #${screen.index.toLocaleString('fa-IR')}`;
+            if (linkedPins.length === 0) {
+                countEl.textContent = 'هنوز خاطره‌ای به این اسکرین متصل نشده';
+            } else {
+                const memCount = linkedPins.reduce((acc, p) => acc + (p.memories ? p.memories.length : 0), 0);
+                countEl.textContent = `${linkedPins.length.toLocaleString('fa-IR')} پین خاطره (${memCount.toLocaleString('fa-IR')} خاطره) نمایش داده شد`;
+            }
+            banner.classList.remove('hidden');
+        }
+
+        /***********************************************************************
+         * 7. RED ARCHITECTURAL PIN, SPECIAL MEMORY PIN & ENLARGED SKETCH DIAGRAM
+         ***********************************************************************/
+        function createPinIcon(pinData, isActive = false, animatePop = false) {
+            const count = pinData.memories ? pinData.memories.length : 1;
+            const activeClass = isActive ? 'active-pin' : '';
+            const popClass = animatePop ? 'pin-pop-in' : '';
+
+            return L.divIcon({
+                className: 'custom-sketch-pin',
+                iconSize: [36, 46],
+                iconAnchor: [18, 44],
+                popupAnchor: [0, 0],
+                html: `
+                    <div class="upright-counter-rotate">
+                        <div class="pin-svg-wrapper ${activeClass} ${popClass}">
+                            ${count > 1 ? `<div class="pin-count-badge" title="${count.toLocaleString('fa-IR')} خاطره ثبت‌شده">${count.toLocaleString('fa-IR')}</div>` : ''}
+                            <svg width="36" height="46" viewBox="0 0 36 46" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 44 C18 44 31.5 26.5 31.5 16 C31.5 8.2 25.5 2.5 18 2.5 C10.5 2.5 4.5 8.2 4.5 16 C4.5 26.5 18 44 18 44 Z" 
+                                      fill="#e53935" stroke="#111111" stroke-width="2.3" stroke-linejoin="round"/>
+                                <path d="M18 42.5 C18 42.5 29.5 26 29.5 16 C29.5 9.2 24.4 4.2 18 4.2" 
+                                      stroke="#ff8a80" stroke-width="1.2" stroke-linecap="round" opacity="0.6"/>
+                                <circle cx="18" cy="15.5" r="5" fill="#ffffff" stroke="#111111" stroke-width="2.2"/>
+                            </svg>
+                        </div>
+                    </div>
+                `
+            });
+        }
+
+        function createSpecialPinIcon(pinData, isActive = false) {
+            const count = pinData.memories ? pinData.memories.length : 1;
+            const activeClass = isActive ? 'active-pin' : '';
+
+            return L.divIcon({
+                className: 'custom-sketch-pin',
+                iconSize: [40, 50],
+                iconAnchor: [20, 48],
+                popupAnchor: [0, 0],
+                html: `
+                    <div class="upright-counter-rotate">
+                        <div class="special-pin-wrapper ${activeClass}">
+                            <div class="special-pin-ring"></div>
+                            ${count > 1 ? `<div class="pin-count-badge" style="border-color:#b45309;color:#b45309;box-shadow:1px 1px 0 #b45309;" title="${count.toLocaleString('fa-IR')} خاطره ثبت‌شده">${count.toLocaleString('fa-IR')}</div>` : ''}
+                            <svg width="40" height="50" viewBox="0 0 40 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M20 48 C20 48 35 28.5 35 17.5 C35 8.8 28.3 2.5 20 2.5 C11.7 2.5 5 8.8 5 17.5 C5 28.5 20 48 20 48 Z" 
+                                      fill="#b45309" stroke="#111111" stroke-width="2.5" stroke-linejoin="round"/>
+                                <path d="M20 46 C20 46 32.8 28 32.8 17.5 C32.8 10 27.1 4.5 20 4.5" 
+                                      stroke="#fcd34d" stroke-width="1.3" stroke-linecap="round" opacity="0.7"/>
+                                <circle cx="20" cy="17" r="7.5" fill="#ffffff" stroke="#111111" stroke-width="2"/>
+                                <path d="M20 11.8 L21.5 15 L25 15.4 L22.4 17.7 L23.1 21.1 L20 19.3 L16.9 21.1 L17.6 17.7 L15 15.4 L18.5 15 Z"
+                                      fill="#b45309" stroke="#111111" stroke-width="0.9" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                    </div>
+                `
+            });
+        }
+
+        function renderSpecialPins() {
+            if (!specialPinsLayerGroup) return;
+            specialPinsLayerGroup.clearLayers();
+            specialMarkersMap = {};
+
+            const specialPins = getSpecialPins();
+            specialPins.forEach(pin => {
+                const marker = L.marker([pin.lat, pin.lng], {
+                    icon: createSpecialPinIcon(pin, pin.id === activePopupPinId),
+                    zIndexOffset: pin.id === activePopupPinId ? 750 : 450
+                }).addTo(specialPinsLayerGroup);
+
+                marker.on('click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    if (isAddPinMode) {
+                        if (isPointInsideStudyPolygon(pin.lat, pin.lng)) {
+                            openNewPinCreationPopup(pin.lat, pin.lng);
+                        }
+                        return;
+                    }
+                    openPinDiagramPopup(pin.id);
+                });
+
+                specialMarkersMap[pin.id] = marker;
+            });
+
+            if (layersState.specialMemories && !map.hasLayer(specialPinsLayerGroup)) {
+                specialPinsLayerGroup.addTo(map);
+            }
+            updateStatsUI();
+        }
+
+        function highlightActivePinMarker(activeId) {
+            pinsData.forEach(pin => {
+                if (pin.isSpecial) {
+                    const sm = specialMarkersMap[pin.id];
+                    if (sm) {
+                        sm.setIcon(createSpecialPinIcon(pin, pin.id === activeId));
+                    }
+                } else {
+                    const marker = markersMap[pin.id];
+                    if (marker) {
+                        marker.setIcon(createPinIcon(pin, pin.id === activeId, false));
+                    }
+                }
+            });
+        }
+
+        function getDiagramPopupConfig() {
+            const isMobile = window.innerWidth < 540;
+            const stackWidth = isMobile ? Math.min(Math.round(window.innerWidth * 0.8), 350) : 410;
+            const totalWidth = stackWidth + 54;
+            return {
+                offset: [Math.round(totalWidth / 2), 0],
+                maxWidth: totalWidth + 24,
+                minWidth: Math.min(totalWidth, window.innerWidth - 20)
+            };
+        }
+
+        function attachPopupScrollAndViewportFit(popupInstance) {
+            const el = popupInstance && popupInstance.getElement ? popupInstance.getElement() : null;
+            if (!el) return;
+
+            // Allow smooth vertical scrolling inside the memory card without zooming/dragging the map
+            L.DomEvent.disableScrollPropagation(el);
+            L.DomEvent.disableClickPropagation(el);
+
+            const stackEl = el.querySelector('.sketch-boxes-stack');
+            if (stackEl) {
+                stackEl.addEventListener('wheel', (e) => e.stopPropagation(), { passive: true });
+                stackEl.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+                stackEl.addEventListener('touchmove', (e) => e.stopPropagation(), { passive: true });
+            }
+
+            // Ensure the entire popup fits safely below the top header and inside the viewport
+            requestAnimationFrame(() => {
+                const boxEl = el.querySelector('.sketch-boxes-stack') || el;
+                const rect = boxEl.getBoundingClientRect();
+                const header = document.querySelector('header');
+                const headerBottom = header ? header.getBoundingClientRect().bottom : 86;
+
+                const safeTop = Math.min(headerBottom + 16, window.innerHeight * 0.30);
+                const safeBottom = window.innerHeight - 24;
+                const safeLeft = 16;
+                const safeRight = window.innerWidth - 16;
+
+                let screenDx = 0;
+                let screenDy = 0;
+
+                if (rect.top < safeTop) {
+                    screenDy = rect.top - safeTop;
+                } else if (rect.bottom > safeBottom) {
+                    screenDy = rect.bottom - safeBottom;
+                }
+
+                if (rect.left < safeLeft) {
+                    screenDx = rect.left - safeLeft;
+                } else if (rect.right > safeRight) {
+                    screenDx = rect.right - safeRight;
+                }
+
+                if (Math.abs(screenDx) > 2 || Math.abs(screenDy) > 2) {
+                    // Compensate for the -5.5 deg CSS rotation on #map
+                    const rad = 5.5 * Math.PI / 180;
+                    const mapDx = Math.round(screenDx * Math.cos(rad) - screenDy * Math.sin(rad));
+                    const mapDy = Math.round(screenDx * Math.sin(rad) + screenDy * Math.cos(rad));
+                    map.panBy([mapDx, mapDy], { animate: true, duration: 0.32 });
+                }
+            });
+        }
+
+        function buildDiagramPopupHTML(pin) {
+            const memories = pin.memories || [];
+            const linkedScreen = getScreenById(pin.screenId);
+            const isSpecial = Boolean(pin.isSpecial);
+            const accentStroke = isSpecial ? '#b45309' : '#e53935';
+            const topBoxClass = isSpecial ? 'sketch-box-special' : 'sketch-box-red';
+            const titleColorClass = isSpecial ? 'text-amber-800' : 'text-red-600';
+            const headerBorderClass = isSpecial ? 'border-amber-200' : 'border-red-200';
+
+            const primary = memories[0] || {
+                author: 'شهروند تهران',
+                date: 'امروز',
+                text: 'خاطره‌ای برای این نقطه ثبت شده است.'
+            };
+            const secondaryMemories = memories.slice(1);
+
+            const secondaryCardsHTML = secondaryMemories.map((mem) => `
+                <div class="sketch-box-black">
+                    <div class="flex items-center justify-between text-xs font-bold text-neutral-600 mb-1.5 border-b border-neutral-200 pb-1.5">
+                        <span class="text-black">${escapeHtml(mem.author || 'رهگذر')}</span>
+                        <span>${escapeHtml(mem.date || '')}</span>
+                    </div>
+                    <p class="text-sm text-neutral-900 leading-7 font-medium">
+                        ${escapeHtml(mem.text)}
+                    </p>
+                    <svg class="sketch-wavy-divider" viewBox="0 0 200 6" fill="none">
+                        <path d="M2 3 Q 25 1, 50 3 T 100 3 T 150 3 T 198 3" stroke="#111111" stroke-width="1.3" stroke-linecap="round"/>
+                    </svg>
+                </div>
+            `).join('');
+
+            return `
+                <div class="sketch-diagram-container" onclick="event.stopPropagation()">
+                    <!-- Diagonal Line from Pin tip to Top-Left corner of Primary Box -->
+                    <svg class="sketch-connector-svg" viewBox="0 0 54 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <line x1="0" y1="52" x2="54" y2="1.5" stroke="${accentStroke}" stroke-width="3" stroke-linecap="round" />
+                        <circle cx="0" cy="52" r="3.2" fill="${accentStroke}" />
+                    </svg>
+
+                    <div class="sketch-boxes-stack">
+                        
+                        <!-- 1. TOP RECTANGULAR BOX (Primary Memory - Enlarged) -->
+                        <div class="${topBoxClass}">
+                            <div class="flex items-center justify-between gap-2 mb-2 pb-1.5 border-b ${headerBorderClass}">
+                                <span class="text-sm font-extrabold ${titleColorClass} truncate">
+                                    ${isSpecial ? '★' : '📍'} ${escapeHtml(pin.locationTitle || 'نقطه ثبت‌شده در محدوده')}
+                                </span>
+                                <div class="flex items-center gap-1.5 flex-shrink-0">
+                                    ${isSpecial ? `
+                                        <span class="text-[10px] font-extrabold text-white px-2 py-0.5" style="background-color:#b45309;">
+                                            خاطره خاص
+                                        </span>
+                                    ` : (linkedScreen ? `
+                                        <span class="text-[10px] font-extrabold text-white px-2 py-0.5" style="background-color:#0b1b45;">
+                                            Screen #${linkedScreen.index.toLocaleString('fa-IR')}
+                                        </span>
+                                    ` : '')}
+                                    <button onclick="closeCurrentPopup(true)" 
+                                        class="text-neutral-400 hover:text-black text-sm font-extrabold px-1 cursor-pointer"
+                                        title="بستن">✕</button>
+                                </div>
+                            </div>
+
+                            <div class="flex items-center justify-between text-xs font-bold text-neutral-600 mb-1.5">
+                                <span class="text-black">${escapeHtml(primary.author || 'شهروند تهران')}</span>
+                                <span>${escapeHtml(primary.date || '')}</span>
+                            </div>
+
+                            <p class="text-sm text-black leading-7 font-medium">
+                                ${escapeHtml(primary.text)}
+                            </p>
+
+                            <svg class="sketch-wavy-divider" viewBox="0 0 200 6" fill="none">
+                                <path d="M2 3 Q 30 0.5, 60 3.5 T 120 2.5 T 198 3" stroke="${accentStroke}" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+
+                        <!-- 2. STACKED BLACK RECTANGULAR BOXES UNDERNEATH -->
+                        ${secondaryMemories.length > 0 ? `
+                            <div class="sketch-secondary-list">
+                                ${secondaryCardsHTML}
+                            </div>
+                        ` : ''}
+
+                        <!-- 3. BOTTOM BLACK BOX: Add another memory to this pin's stack -->
+                        <div class="sketch-box-black bg-neutral-50">
+                            <div id="addMemoryTrigger-${pin.id}" class="flex items-center justify-between">
+                                <button onclick="showAddMemoryToPinForm('${pin.id}')" 
+                                    class="text-xs font-extrabold text-black hover:text-red-600 flex items-center gap-1.5 cursor-pointer w-full text-right">
+                                    <span class="text-red-600 text-base font-black">+</span>
+                                    <span>ثبت خاطره شما در همین نقطه...</span>
+                                </button>
+                                ${pin.isUserCreated ? `
+                                    <button onclick="deletePin('${pin.id}')" 
+                                        class="text-xs text-neutral-400 hover:text-red-600 mr-2 cursor-pointer"
+                                        title="حذف این پین">حذف</button>
+                                ` : ''}
+                            </div>
+
+                            <form id="addMemoryForm-${pin.id}" onsubmit="submitMemoryToExistingPin(event, '${pin.id}')" class="hidden mt-2.5 pt-2.5 border-t border-neutral-300 space-y-2.5">
+                                <input type="text" id="memAuthor-${pin.id}" placeholder="نام شما (اختیاری - مثلاً: یک رهگذر)" 
+                                    class="w-full text-sm px-2.5 py-2 border border-black bg-white focus:outline-none focus:border-red-600" />
+                                <textarea id="memText-${pin.id}" rows="3" required placeholder="خاطره خود از این نقطه را بنویسید..."
+                                    class="w-full text-sm px-2.5 py-2 border border-black bg-white focus:outline-none focus:border-red-600 leading-relaxed"></textarea>
+                                <div class="flex items-center justify-end gap-2">
+                                    <button type="button" onclick="hideAddMemoryToPinForm('${pin.id}')"
+                                        class="px-3 py-1.5 text-xs font-bold border border-black bg-white hover:bg-neutral-100 cursor-pointer">
+                                        انصراف
+                                    </button>
+                                    <button type="submit"
+                                        class="px-3.5 py-1.5 text-xs font-bold bg-red-600 text-white border border-black hover:bg-red-700 cursor-pointer">
+                                        افزودن به پین
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderAllPins(animatePop = false) {
+            if (!memoryPinsLayerGroup) return;
+            memoryPinsLayerGroup.clearLayers();
+            markersMap = {};
+
+            // Only show regular memories belonging to the selected Screen (unless "نمایش همه خاطرات" is toggled on)
+            let visiblePins = [];
+            if (layersState.allMemories) {
+                visiblePins = getRegularPins();
+            } else if (selectedScreenId) {
+                visiblePins = getPinsForScreen(selectedScreenId);
+            }
+
+            visiblePins.forEach(pin => {
+                const marker = L.marker([pin.lat, pin.lng], {
+                    icon: createPinIcon(pin, pin.id === activePopupPinId, animatePop),
+                    zIndexOffset: pin.id === activePopupPinId ? 600 : 300
+                }).addTo(memoryPinsLayerGroup);
+
+                marker.on('click', (e) => {
+                    L.DomEvent.stopPropagation(e);
+                    openPinDiagramPopup(pin.id);
+                });
+
+                markersMap[pin.id] = marker;
+            });
+
+            updateStatsUI();
+        }
+
+        function openPinDiagramPopup(pinId) {
+            const pin = pinsData.find(p => p.id === pinId);
+            if (!pin) return;
+
+            closeCurrentPopup(true);
+
+            // For regular memories, ensure parent Screen is selected so sibling memories & links stay visible
+            if (!pin.isSpecial && pin.screenId && selectedScreenId !== pin.screenId) {
+                selectedScreenId = pin.screenId;
+                highlightActiveScreenMarker(pin.screenId);
+                renderAllPins(false);
+                renderActiveScreenLinks();
+            }
+
+            activePopupPinId = pin.id;
+            highlightActivePinMarker(pin.id);
+
+            const popupCfg = getDiagramPopupConfig();
+
+            currentPopup = L.popup({
+                className: 'diagram-popup',
+                closeButton: false,
+                autoClose: false,
+                closeOnClick: false,
+                offset: popupCfg.offset,
+                maxWidth: popupCfg.maxWidth,
+                minWidth: popupCfg.minWidth
+            })
+                .setLatLng([pin.lat, pin.lng])
+                .setContent(`<div class="diagram-popup-anchor">${buildDiagramPopupHTML(pin)}</div>`)
+                .openOn(map);
+
+            // Immediately hide Screen info bar so it never overlaps the memory popup
+            updateActiveScreenBanner();
+            attachPopupScrollAndViewportFit(currentPopup);
+        }
+
+        /***********************************************************************
+         * 8. ADDING NEW PINS & MEMORIES INTERACTION
+         ***********************************************************************/
+        function toggleAddPinMode(forceState) {
+            isAddPinMode = typeof forceState === 'boolean' ? forceState : !isAddPinMode;
+            const btn = document.getElementById('toggleAddPinBtn');
+            const btnText = document.getElementById('addPinBtnText');
+            const banner = document.getElementById('modeInstructionBanner');
+
+            if (isAddPinMode) {
+                document.body.classList.add('adding-pin-cursor');
+                btn.classList.add('active-mode');
+                btnText.textContent = 'در حال انتخاب نقطه روی نقشه... (لغو)';
+                banner.classList.remove('opacity-0', '-translate-y-2');
+                banner.classList.add('opacity-100', 'translate-y-0');
+                closeCurrentPopup(true);
+            } else {
+                document.body.classList.remove('adding-pin-cursor');
+                btn.classList.remove('active-mode');
+                btnText.textContent = '+ گذاشتن پین و ثبت خاطره';
+                banner.classList.add('opacity-0', '-translate-y-2');
+                banner.classList.remove('opacity-100', 'translate-y-0');
+                clearHoverNearestLink();
+            }
+            updateActiveScreenBanner();
+        }
+
+        function openNewPinCreationPopup(lat, lng) {
+            closeCurrentPopup(true);
+            clearHoverNearestLink();
+
+            const nearest = findNearestScreen(lat, lng);
+            const targetScreen = nearest.screen;
+            const siblingCount = getPinsForScreen(targetScreen.id).length;
+
+            // Automatically activate nearest Screen so sibling memories under that Screen appear immediately
+            tempDraftLatLng = { lat, lng };
+            selectedScreenId = targetScreen.id;
+            if (!layersState.screens) {
+                layersState.screens = true;
+                if (!map.hasLayer(screensLayerGroup)) screensLayerGroup.addTo(map);
+                updateLayersUI();
+            }
+            highlightActiveScreenMarker(targetScreen.id);
+            renderAllPins(true);
+            renderActiveScreenLinks();
+            updateActiveScreenBanner();
+
+            tempNewMarker = L.marker([lat, lng], {
+                icon: createPinIcon({ memories: [1] }, true, true),
+                zIndexOffset: 700
+            }).addTo(map);
+
+            const siblingHint = siblingCount > 0
+                ? `${siblingCount.toLocaleString('fa-IR')} خاطره دیگر زیرمجموعه این اسکرین روی نقشه ظاهر شد`
+                : 'این اولین خاطره زیرمجموعه این اسکرین خواهد بود';
+
+            const formHTML = `
+                <div class="diagram-popup-anchor">
+                    <div class="sketch-diagram-container" onclick="event.stopPropagation()">
+                        <svg class="sketch-connector-svg" viewBox="0 0 54 64" fill="none">
+                            <line x1="0" y1="52" x2="54" y2="1.5" stroke="#e53935" stroke-width="3" stroke-linecap="round" />
+                            <circle cx="0" cy="52" r="3.2" fill="#e53935" />
+                        </svg>
+
+                        <div class="sketch-boxes-stack">
+                            <div class="sketch-box-red">
+                                <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-red-200">
+                                    <span class="text-sm font-extrabold text-red-600">📌 ثبت پین و خاطره جدید</span>
+                                    <button type="button" onclick="cancelNewPinCreation()" class="text-neutral-400 hover:text-black text-sm font-bold px-1 cursor-pointer">✕</button>
+                                </div>
+
+                                <div class="mb-2.5 px-2.5 py-2 text-xs border border-[#0b1b45] bg-[#f4f6fc]">
+                                    <div class="flex items-center justify-between font-extrabold" style="color: #0b1b45;">
+                                        <span>🔗 متصل به نزدیک‌ترین اسکرین: Screen #${targetScreen.index.toLocaleString('fa-IR')}</span>
+                                        <span>~${nearest.distanceMeters.toLocaleString('fa-IR')} متر</span>
+                                    </div>
+                                    <div class="text-[11px] text-neutral-600 mt-1 font-medium">${siblingHint}</div>
+                                </div>
+
+                                <form onsubmit="saveNewPinFromPopup(event, ${lat}, ${lng}, '${targetScreen.id}')" class="space-y-2.5">
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-700 mb-1">عنوان محل یا کوچه:</label>
+                                        <input type="text" id="newPinLocationTitle" required placeholder="مثلاً: تقاطع ولیعصر و بزرگمهر"
+                                            class="w-full text-sm px-2.5 py-2 border border-black bg-white focus:outline-none focus:border-red-600" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-700 mb-1">نام شما (یا لقب):</label>
+                                        <input type="text" id="newPinAuthor" placeholder="مثلاً: یک شهروند تهرانی"
+                                            class="w-full text-sm px-2.5 py-2 border border-black bg-white focus:outline-none focus:border-red-600" />
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-bold text-neutral-700 mb-1">متن خاطره:</label>
+                                        <textarea id="newPinText" rows="4" required placeholder="خاطره خود را از این خیابان یا ساختمان بنویسید..."
+                                            class="w-full text-sm px-2.5 py-2 border border-black bg-white focus:outline-none focus:border-red-600 leading-relaxed"></textarea>
+                                    </div>
+                                    <div class="flex items-center justify-end gap-2 pt-1">
+                                        <button type="button" onclick="cancelNewPinCreation()"
+                                            class="px-3 py-1.5 text-xs font-bold border border-black bg-white hover:bg-neutral-100 cursor-pointer">
+                                            انصراف
+                                        </button>
+                                        <button type="submit"
+                                            class="px-4 py-1.5 text-xs font-bold bg-red-600 text-white border border-black hover:bg-red-700 cursor-pointer">
+                                            ثبت و اتصال به اسکرین
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            const popupCfg = getDiagramPopupConfig();
+
+            currentPopup = L.popup({
+                className: 'diagram-popup',
+                closeButton: false,
+                autoClose: false,
+                closeOnClick: false,
+                offset: popupCfg.offset,
+                maxWidth: popupCfg.maxWidth,
+                minWidth: popupCfg.minWidth
+            })
+                .setLatLng([lat, lng])
+                .setContent(formHTML)
+                .openOn(map);
+
+            updateActiveScreenBanner();
+            attachPopupScrollAndViewportFit(currentPopup);
+
+            setTimeout(() => {
+                const titleInput = document.getElementById('newPinLocationTitle');
+                if (titleInput) titleInput.focus();
+            }, 120);
+        }
+
+        function cancelNewPinCreation() {
+            closeCurrentPopup(true);
+            renderActiveScreenLinks();
+        }
+
+        function saveNewPinFromPopup(event, lat, lng, linkedScreenId) {
+            event.preventDefault();
+            const locationTitle = document.getElementById('newPinLocationTitle').value.trim() || 'نقطه‌ای در مرکز تهران';
+            const author = document.getElementById('newPinAuthor').value.trim() || 'شهروند تهران';
+            const text = document.getElementById('newPinText').value.trim();
+
+            if (!text) return;
+
+            const nearest = findNearestScreen(lat, lng);
+            const finalScreenId = linkedScreenId || nearest.screen.id;
+            const targetScreen = getScreenById(finalScreenId) || nearest.screen;
+
+            const newPin = {
+                id: 'pin-' + Date.now(),
+                lat: lat,
+                lng: lng,
+                screenId: targetScreen.id,
+                locationTitle: locationTitle,
+                isUserCreated: true,
+                memories: [
+                    {
+                        author: author,
+                        date: 'ثبت‌شده توسط شما',
+                        text: text
+                    }
+                ]
+            };
+
+            closeCurrentPopup(true);
+            pinsData.push(newPin);
+            savePinsToStorage();
+            toggleAddPinMode(false);
+
+            selectedScreenId = targetScreen.id;
+            renderScreenPins();
+            renderAllPins(false);
+            renderActiveScreenLinks();
+            updateActiveScreenBanner();
+
+            openPinDiagramPopup(newPin.id);
+
+            showToast(`خاطره شما ثبت و به نزدیک‌ترین اسکرین (Screen #${targetScreen.index.toLocaleString('fa-IR')}) متصل شد.`);
+        }
+
+        function showAddMemoryToPinForm(pinId) {
+            const trigger = document.getElementById(`addMemoryTrigger-${pinId}`);
+            const form = document.getElementById(`addMemoryForm-${pinId}`);
+            if (trigger && form) {
+                trigger.classList.add('hidden');
+                form.classList.remove('hidden');
+                const stackEl = form.closest('.sketch-boxes-stack');
+                if (stackEl) {
+                    setTimeout(() => {
+                        stackEl.scrollTo({ top: stackEl.scrollHeight, behavior: 'smooth' });
+                    }, 40);
+                }
+                const textarea = document.getElementById(`memText-${pinId}`);
+                if (textarea) textarea.focus();
+            }
+        }
+
+        function hideAddMemoryToPinForm(pinId) {
+            const trigger = document.getElementById(`addMemoryTrigger-${pinId}`);
+            const form = document.getElementById(`addMemoryForm-${pinId}`);
+            if (trigger && form) {
+                form.classList.add('hidden');
+                trigger.classList.remove('hidden');
+            }
+        }
+
+        function submitMemoryToExistingPin(event, pinId) {
+            event.preventDefault();
+            const authorInput = document.getElementById(`memAuthor-${pinId}`);
+            const textInput = document.getElementById(`memText-${pinId}`);
+            if (!textInput || !textInput.value.trim()) return;
+
+            const pin = pinsData.find(p => p.id === pinId);
+            if (!pin) return;
+
+            pin.memories.push({
+                author: (authorInput && authorInput.value.trim()) ? authorInput.value.trim() : 'شهروند تهران',
+                date: 'ثبت جدید',
+                text: textInput.value.trim()
+            });
+
+            savePinsToStorage();
+            if (pin.isSpecial) {
+                renderSpecialPins();
+            } else {
+                renderAllPins(false);
+            }
+            openPinDiagramPopup(pinId);
+            showToast('خاطره جدید به لیست این پین اضافه شد.');
+        }
+
+        function deletePin(pinId) {
+            pinsData = pinsData.filter(p => p.id !== pinId);
+            savePinsToStorage();
+            closeCurrentPopup(true);
+            renderScreenPins();
+            renderAllPins(false);
+            renderActiveScreenLinks();
+            updateActiveScreenBanner();
+            showToast('پین مورد نظر حذف شد.');
+        }
+
+        function resetToDemoMemories() {
+            pinsData = ensurePinsLinkedToNearestScreen(JSON.parse(JSON.stringify(DEFAULT_DEMO_PINS)));
+            savePinsToStorage();
+            deselectScreen();
+            renderScreenPins();
+            renderSpecialPins();
+            recenterMap();
+            showToast('خاطرات دمو و خاطرات خاص به حالت اولیه بازگردانی شدند.');
+        }
+
+        function closeCurrentPopup(keepScreenSelection = true) {
+            if (currentPopup) {
+                map.removeLayer(currentPopup);
+                currentPopup = null;
+            }
+            if (tempNewMarker) {
+                map.removeLayer(tempNewMarker);
+                tempNewMarker = null;
+            }
+            tempDraftLatLng = null;
+            activePopupPinId = null;
+            highlightActivePinMarker(null);
+
+            if (!keepScreenSelection) {
+                selectedScreenId = null;
+                highlightActiveScreenMarker(null);
+                renderAllPins(false);
+            }
+            renderActiveScreenLinks();
+            updateActiveScreenBanner();
+        }
+
+        // Close Layers panel when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!isLayersPanelOpen) return;
+            const wrapper = document.getElementById('layersControlWrapper');
+            if (wrapper && !wrapper.contains(e.target)) {
+                toggleLayersPanel(null, false);
+            }
+        });
+
+        function recenterMap() {
+            fitMapToScreenshotFrame(true);
+        }
+
+        function showToast(message) {
+            const box = document.getElementById('toastBox');
+            const text = document.getElementById('toastText');
+            if (!box || !text) return;
+            text.textContent = message;
+            box.classList.remove('opacity-0');
+            box.classList.add('opacity-100');
+            setTimeout(() => {
+                box.classList.remove('opacity-100');
+                box.classList.add('opacity-0');
+            }, 2800);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        window.onload = function() {
+            initMap();
+        };
+    </script>
+</body>
+</html>
