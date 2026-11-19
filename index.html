@@ -41,7 +41,7 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #ffffff;
+            background-color: #e5e5e5;
             color: var(--ink-black);
         }
 
@@ -51,7 +51,7 @@
             width: 100vw;
             height: 100vh;
             overflow: hidden;
-            background-color: #ffffff;
+            background-color: #e5e5e5;
         }
 
         /* Oversized map container so top-down rotation (-5.5 deg) never shows empty corners */
@@ -61,7 +61,7 @@
             left: -18%;
             width: 136%;
             height: 136%;
-            background-color: #ffffff;
+            background-color: #e5e5e5;
             z-index: 1;
             transform-origin: 50% 50%;
             transform: rotateZ(-5.5deg) scale(1.0);
@@ -73,9 +73,9 @@
             transform-origin: bottom center;
         }
 
-        /* Ultra-light monochrome fallback tiles until vector CAD lines load */
+        /* Crisp Black & White Monochrome Filter on Satellite + Base Map Tiles (just like the original version) */
         .leaflet-tile-pane {
-            filter: grayscale(100%) contrast(155%) brightness(112%);
+            filter: grayscale(100%) contrast(118%) brightness(102%);
             transition: opacity 0.35s ease;
         }
 
@@ -1263,8 +1263,9 @@
             allMemories: false
         };
 
-        // Layer references for pure white-and-black CAD linework & toggleable layers
+        // Layer references for B&W satellite underlay + crisp B&W CAD linework & toggleable layers
         let cartoFallbackTileLayer = null;
+        let satelliteTileLayer = null;
         let osmBuildingsLayerGroup = null;
         let osmFootwaysLayerGroup = null;
         let osmStreetsCasingGroup = null;
@@ -1435,7 +1436,7 @@
         }
 
         /***********************************************************************
-         * 4. PURE WHITE & BLACK ARCHITECTURAL CAD LINEWORK MAP ENGINE
+         * 4. B&W SATELLITE UNDERLAY + B&W ARCHITECTURAL CAD LINEWORK MAP ENGINE
          ***********************************************************************/
         function initMap() {
             loadPinsFromStorage();
@@ -1453,7 +1454,7 @@
                 renderer: L.svg()
             });
 
-            // Ordered SVG panes for seamless CAD intersections
+            // Ordered SVG panes for seamless CAD intersections on top of the B&W satellite base
             map.createPane('cadBuildingsPane');
             map.getPane('cadBuildingsPane').style.zIndex = 410;
 
@@ -1472,14 +1473,20 @@
             map.createPane('cadLinksPane');
             map.getPane('cadLinksPane').style.zIndex = 445;
 
-            // Ultra-light monochrome fallback tiles (fades out once crisp OSM SVG lines load)
+            // 1. Clean monochrome architectural base tile layer underneath (no commercial labels)
             cartoFallbackTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
                 subdomains: 'abcd',
                 maxZoom: 19,
-                opacity: 0.82
+                opacity: 1
             }).addTo(map);
 
-            // Vector groups for CAD linework
+            // 2. Real Aerial/Satellite Map rendered in Black & White underneath the CAD lines (just like the original version)
+            satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                opacity: 0.78
+            }).addTo(map);
+
+            // Vector groups for CAD linework on top of the B&W satellite layer
             osmBuildingsLayerGroup = L.layerGroup().addTo(map);
             osmFootwaysLayerGroup = L.layerGroup().addTo(map);
             osmStreetsCasingGroup = L.layerGroup().addTo(map);
@@ -1623,7 +1630,7 @@
                 casing.setStyle({ weight: casingWeight });
                 fill.setStyle({ weight: fillWeight });
             });
-            const bWeight = currentZoom >= 18 ? 0.95 : (currentZoom >= 17 ? 0.8 : 0.62);
+            const bWeight = currentZoom >= 18 ? 0.95 : (currentZoom >= 17 ? 0.8 : 0.65);
             osmBuildingLayers.forEach(layer => {
                 layer.setStyle({ weight: bWeight });
             });
@@ -1649,8 +1656,8 @@
             if (solidFootways.length > 0) {
                 L.polyline(solidFootways, {
                     pane: 'cadFootwaysPane',
-                    color: '#333333',
-                    weight: 0.75,
+                    color: '#222222',
+                    weight: 0.8,
                     opacity: 0.72,
                     smoothFactor: 0.6,
                     interactive: false
@@ -1659,8 +1666,8 @@
             if (dashedFootways.length > 0) {
                 L.polyline(dashedFootways, {
                     pane: 'cadFootwaysPane',
-                    color: '#333333',
-                    weight: 0.75,
+                    color: '#222222',
+                    weight: 0.8,
                     opacity: 0.72,
                     dashArray: '2, 2',
                     smoothFactor: 0.6,
@@ -1684,9 +1691,9 @@
 
                 const casingLine = L.polyline(coordsList, {
                     pane: 'cadRoadCasingPane',
-                    color: '#1a1a1a',
+                    color: '#141414',
                     weight: casingWeight,
-                    opacity: 0.92,
+                    opacity: 0.86,
                     lineCap: 'round',
                     lineJoin: 'round',
                     smoothFactor: 0.5,
@@ -1695,9 +1702,9 @@
 
                 const fillLine = L.polyline(coordsList, {
                     pane: 'cadRoadFillPane',
-                    color: '#ffffff',
+                    color: '#f2f2f2',
                     weight: fillWeight,
-                    opacity: 1,
+                    opacity: 0.78,
                     lineCap: 'round',
                     lineJoin: 'round',
                     smoothFactor: 0.5,
@@ -1711,23 +1718,23 @@
         function renderBuildingsDataset(buildings) {
             if (!map) return;
             const currentZoom = map.getZoom();
-            const bWeight = currentZoom >= 18 ? 0.95 : (currentZoom >= 17 ? 0.8 : 0.62);
+            const bWeight = currentZoom >= 18 ? 0.95 : (currentZoom >= 17 ? 0.8 : 0.65);
 
             osmBuildingsLayerGroup.clearLayers();
             osmBuildingLayers = [];
 
-            // Batch hundreds of building footprints into a handful of SVG MultiPolygons for instant rendering & 60fps zoom
+            // Batch building footprints with translucent fill so the B&W satellite imagery shines cleanly underneath
             const list = buildings || [];
             const BATCH_SIZE = 400;
             for (let i = 0; i < list.length; i += BATCH_SIZE) {
                 const multiPolyCoords = list.slice(i, i + BATCH_SIZE).map(ring => [ring]);
                 const bBatch = L.polygon(multiPolyCoords, {
                     pane: 'cadBuildingsPane',
-                    color: '#1f1f1f',
+                    color: '#181818',
                     weight: bWeight,
-                    opacity: 0.9,
-                    fillColor: '#ffffff',
-                    fillOpacity: 1,
+                    opacity: 0.62,
+                    fillColor: '#dcdcdc',
+                    fillOpacity: 0.18,
                     fillRule: 'nonzero',
                     smoothFactor: 0.4,
                     interactive: false
@@ -1754,11 +1761,6 @@
             if (!dataset || !map) return;
             renderStreetsDataset(dataset.roads, dataset.footways);
             renderBuildingsDataset(dataset.buildings);
-
-            // Fade out fallback tiles once crisp real CAD SVG vectors are drawn
-            if (cartoFallbackTileLayer) {
-                cartoFallbackTileLayer.setOpacity(0);
-            }
             updateOsmLoadStatus((dataset.buildings || []).length, (dataset.roads || []).length, false);
         }
 
@@ -1893,9 +1895,6 @@
                     footways = parsed.footways;
                     if (roads.length > 0) {
                         renderStreetsDataset(roads, footways);
-                        if (cartoFallbackTileLayer && buildings.length === 0) {
-                            cartoFallbackTileLayer.setOpacity(0.32);
-                        }
                         if (buildings.length === 0) {
                             updateOsmLoadStatus(0, roads.length, true);
                         }
@@ -1917,28 +1916,22 @@
             await Promise.all([streetsPromise, buildingsPromise]);
 
             if (buildings.length > 0 || roads.length > 0) {
-                if (cartoFallbackTileLayer) {
-                    cartoFallbackTileLayer.setOpacity(0);
-                }
                 updateOsmLoadStatus(buildings.length, roads.length, false);
                 if (buildings.length > 0 && roads.length > 0) {
                     saveCachedOsmCadData({ buildings, roads, footways });
                 }
             } else {
-                if (cartoFallbackTileLayer) {
-                    cartoFallbackTileLayer.setOpacity(0.9);
-                }
                 const statusEl = document.getElementById('osmStatusText');
                 const dotEl = document.getElementById('osmDot');
                 if (statusEl && dotEl) {
-                    statusEl.textContent = 'نقشه خطی پایه فعال است';
+                    statusEl.textContent = 'نقشه ماهواره‌ای سیاه‌وسفید فعال است';
                     dotEl.className = 'w-1.5 h-1.5 rounded-full bg-neutral-800 inline-block';
                 }
             }
         }
 
         /***********************************************************************
-         * 6. LAYERS SYSTEM, DARK NAVY "SCREENS" PINS & CAMERA PITCH TOGGLE
+         * 6. LAYERS SYSTEM, DARK NAVY "SCREENS" PINS & TOGGLE CONTROLS
          ***********************************************************************/
         function toggleLayersPanel(event, forceState) {
             if (event) event.stopPropagation();
